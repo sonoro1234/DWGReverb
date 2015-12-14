@@ -462,6 +462,8 @@ EarlyRef27Gen::EarlyRef27Gen(Unit *unit)
         SETCALC(*ClearUnitOutputs);
         unit->mDone = true;
     }
+    Clear(sndbufL->samples, sndbufL->data);
+    Clear(sndbufR->samples, sndbufR->data);
     framesize = sc_min(sndbufL->frames,sndbufR->frames);
     let_trig = true;
     m_pos = 0;
@@ -621,10 +623,234 @@ void EarlyRef27Gen_next(EarlyRef27Gen* unit,int inwrongNumSamples)
             ZOUT0(0) = 0.0;
     }
 }
+////////////ambisonics bformat
+struct EarlyRefAtkGen:public Unit
+{
+	EarlyRefAtkGen(Unit* unit);
+    void CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
+    void refsCalculation();
+    void findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res);
+    bool getargs(Unit * unit, bool force=false);
+	float L[3];
+    float Ps[3];
+    float Pr[3];
+    float B,HW,d0;
+    int N;
+    float samprate;
+    float bufnumW,bufnumX,bufnumY,bufnumZ;
+    bool let_trig;
+    SndBuf *sndbufW, *sndbufX,*sndbufY, *sndbufZ;
+    unsigned int framesize,framesize_1, m_pos;
+};
+SCWrapClass(EarlyRefAtkGen);
+EarlyRefAtkGen::EarlyRefAtkGen(Unit *unit)
+{
+    int ins = 0;
+    bufnumW = IN0(ins++);
+    bufnumX = IN0(ins++);
+    bufnumY = IN0(ins++);
+    bufnumZ = IN0(ins++);
+    Ps[0] = IN0(ins++) - 1.0;//hack to force getargs
+    samprate = FULLRATE;
+    sndbufW = GetBuffer(unit,bufnumW);
+    sndbufX = GetBuffer(unit,bufnumX);
+    sndbufY = GetBuffer(unit,bufnumY);
+    sndbufZ = GetBuffer(unit,bufnumZ);
+    if (!sndbufW || !sndbufX || !sndbufY || !sndbufZ){
+        SETCALC(*ClearUnitOutputs);
+        unit->mDone = true;
+    }
+    Clear(sndbufW->samples, sndbufW->data);
+    Clear(sndbufX->samples, sndbufX->data);
+    Clear(sndbufY->samples, sndbufY->data);
+    Clear(sndbufZ->samples, sndbufZ->data);
+    framesize = sc_min(sc_min(sc_min(sndbufW->frames,sndbufX->frames),sndbufY->frames),sndbufZ->frames);
+    framesize_1 = framesize -1;
+    let_trig = true;
+    m_pos = 0;
+    //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
+    //refsCalculation();
+    ZOUT0(0) = 0.0;
+    SETCALC(EarlyRefAtkGen_next);
+}
+inline void setfracdel(int pos,float frac,float val,float *buf){
+	buf[pos] += val*(1.0-frac);
+	buf[pos + 1] += val*frac;
+}
+static double invsqrt2 = 1.0/sqrt(2.0);
+void EarlyRefAtkGen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
+{
+    float image[3];
+    float del,amp;
+    findImage(ux,uy,uz,lx,ly,lz,image);
+    /*
+    double vec[3];
+    vec[0] = image[0] - Pr[0];
+    vec[1] = image[1] - Pr[1];
+    vec[2] = image[2] - Pr[2];
+    
+    double planeDist = hypot(vec[1], vec[0]);
+	double azim = atan2(vec[1], vec[0]) - M_PI*0.5; 
+	double elev = atan2(vec[2], planeDist);
+	double dista = hypot(planeDist, vec[2]);
+    //float dista = sqrt(vec[0]*vec[0]+vec[1]*vec[1]+vec[2]*vec[2]);
+    float preA = pow(B,exp);
+    amp = preA/(dista + 0.1);//d0*preA/(distL);
+    del = samprate*dista/340.0;
+    double cosa = cos(azim);
+    double sina = sin(azim);
+    double cosb = cos(elev);
+    double sinb = sin(elev);
 
+    fracdel2(del,amp*invsqrt2,sndbufW->data,sndbufW->frames);
+    fracdel2(del,amp*cosa*cosb,sndbufX->data,sndbufX->frames);
+    fracdel2(del,amp*sina*cosb,sndbufY->data,sndbufY->frames);
+    fracdel2(del,amp*sinb,sndbufZ->data,sndbufZ->frames);
+    return dista;
+    */
+    //can be done  without trig
+    //rotation(x,y,z) -> (y,-x,z)
+    double x = image[1] - Pr[1];
+    double y = Pr[0] - image[0];
+    double z = image[2] - Pr[2];
+    
+    double dista_2 = x*x + y*y +z*z; 
+    double dista = sqrt(dista_2);
+        
+    del = samprate*dista/340.0;
+    if (dista < 1e-9 || (unsigned int)del > framesize_1)
+        return;
+    double preA = pow(B,exp);
+    amp = preA/dista;
+    float amp_d2 = preA/dista_2;
+    int pos = (int)floor(del);
+	float frac = del - (float)pos;
+    setfracdel(pos,frac,amp*invsqrt2,sndbufW->data);
+    setfracdel(pos,frac,amp_d2*x,sndbufX->data);
+    setfracdel(pos,frac,amp_d2*y,sndbufY->data);
+    setfracdel(pos,frac,amp_d2*z,sndbufZ->data);
+}
+/*
+void EarlyRefAtkGen::predist(u,v,w,l,m,n,L,Ps){
+	local x = (2*u-1)*Ps[1] - 2*l*L[1] 
+	local y = (2*v-1)*Ps[2] - 2*m*L[2] 
+	local z = (2*w-1)*Ps[3] - 2*n*L[3]
+	return {x,y,z},-TA{2*u-1,2*v-1,2*w-1},-TA{-2*l,-2*m,-2*n}
+}
+*/
+void EarlyRefAtkGen::refsCalculation(){
+    
+    Clear(sndbufW->samples,sndbufW->data);
+    Clear(sndbufX->samples,sndbufX->data);
+    Clear(sndbufY->samples,sndbufY->data);
+    Clear(sndbufZ->samples,sndbufZ->data);
+    d0 = 1.0;
+    if(N == 0){
+        //printf("EarlyRefAtkGen::refsCalculation\n");
+        CalcOne(0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0);	
+        CalcOne(1, 1.0, 1.0, 1.0,-1.0, 0.0, 0.0, 0.0);	
+        CalcOne(2, 1.0, 1.0,-1.0, 1.0, 0.0, 0.0, 0.0);	
+        CalcOne(3, 2.0, 1.0,-1.0,-1.0, 0.0, 0.0, 0.0);	
+        CalcOne(4, 1.0,-1.0, 1.0, 1.0, 0.0, 0.0, 0.0);	
+        CalcOne(5, 2.0,-1.0, 1.0,-1.0, 0.0, 0.0, 0.0);	
+        CalcOne(6, 2.0,-1.0,-1.0, 1.0, 0.0, 0.0, 0.0);	
+        CalcOne(7, 3.0,-1.0,-1.0,-1.0, 0.0, 0.0, 0.0);	
+        CalcOne(8, 1.0, 1.0, 1.0,-1.0, 0.0, 0.0, 2.0);	
+        CalcOne(9, 2.0, 1.0,-1.0,-1.0, 0.0, 0.0, 2.0);	
+        CalcOne(10, 2.0,-1.0, 1.0,-1.0, 0.0, 0.0, 2.0);	
+        CalcOne(11, 3.0,-1.0,-1.0,-1.0, 0.0, 0.0, 2.0);	
+        CalcOne(12, 1.0, 1.0,-1.0, 1.0, 0.0, 2.0, 0.0);	
+        CalcOne(13, 2.0, 1.0,-1.0,-1.0, 0.0, 2.0, 0.0);	
+        CalcOne(14, 2.0,-1.0,-1.0, 1.0, 0.0, 2.0, 0.0);	
+        CalcOne(15, 3.0,-1.0,-1.0,-1.0, 0.0, 2.0, 0.0);	
+        CalcOne(16, 2.0, 1.0,-1.0,-1.0, 0.0, 2.0, 2.0);	
+        CalcOne(17, 3.0,-1.0,-1.0,-1.0, 0.0, 2.0, 2.0);	
+        CalcOne(18, 1.0,-1.0, 1.0, 1.0, 2.0, 0.0, 0.0);	
+        CalcOne(19, 2.0,-1.0, 1.0,-1.0, 2.0, 0.0, 0.0);	
+        CalcOne(20, 2.0,-1.0,-1.0, 1.0, 2.0, 0.0, 0.0);	
+        CalcOne(21, 3.0,-1.0,-1.0,-1.0, 2.0, 0.0, 0.0);	
+        CalcOne(22, 2.0,-1.0, 1.0,-1.0, 2.0, 0.0, 2.0);	
+        CalcOne(23, 3.0,-1.0,-1.0,-1.0, 2.0, 0.0, 2.0);	
+        CalcOne(24, 2.0,-1.0,-1.0, 1.0, 2.0, 2.0, 0.0);	
+        CalcOne(25, 3.0,-1.0,-1.0,-1.0, 2.0, 2.0, 0.0);	
+        CalcOne(26, 3.0,-1.0,-1.0,-1.0, 2.0, 2.0, 2.0);	
+    }else{
+        //printf("EarlyRefAtkGen::refsCalculation N:%d\n",N);
+        for(int l = -N;l <=N;l++)
+            for(int m = -N;m <=N;m++)
+                for(int n = -N;n <=N;n++)
+                    for(int u = 0;u <=1;u++)
+                        for(int v = 0;v <=1;v++)
+                            for(int w = 0;w <=1;w++){
+                                float exp = abs(l-u)+abs(l)+abs(m-v)+abs(m)+abs(n-w)+abs(n);
+                                float ux = 2*u-1;
+                                float uy = 2*v-1;
+                                float uz = 2*w-1;
+                                float lx = 2*l;
+                                float ly = 2*m;
+                                float lz = 2*n;
+                                CalcOne(0,exp,-ux,-uy,-uz,lx,ly,lz);
+                            }
+    }
+}
+void EarlyRefAtkGen::findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res){
+    res[0] = ufx*Ps[0] + lfx*L[0];
+    res[1] = ufy*Ps[1] + lfy*L[1];
+    res[2] = ufz*Ps[2] + lfz*L[2];
+}
+bool EarlyRefAtkGen::getargs(Unit *unit,bool force){
+    float Pst[3],Prt[3],Lt[3],HWt,Bt;
+    int Nt;
+    float Ntf;
+    int ins = 4;
+    Pst[0] = ZIN0(ins++);
+    Pst[1] = ZIN0(ins++);
+    Pst[2] = ZIN0(ins++);
+    Prt[0] = ZIN0(ins++);
+    Prt[1] = ZIN0(ins++);
+    Prt[2] = ZIN0(ins++);
+    Lt[0] = ZIN0(ins++);
+    Lt[1] = ZIN0(ins++);
+    Lt[2] = ZIN0(ins++);
+    HWt = ZIN0(ins++);
+    Bt = sc_clip(ZIN0(ins++),-1.0,1.0);
+    Ntf = ZIN0(ins++);
+    Ntf = sc_clip(Ntf,0.0f,5.0f);//if done above dont works!!
+    Nt = Ntf;
+    bool changed = (Pst[0] != Ps[0] || Pst[1] != Ps[1] || Pst[2] != Ps[2] || Prt[0] != Pr[0] || Prt[1] != Pr[1] || Prt[2] != Pr[2] || Lt[0] != L[0] || Lt[1] != L[1] || Lt[2] != L[2] || HWt != HW || Bt != B || Nt != N);
+    if (changed || force) {
+        //printf("Nt %d %f \n",Nt,Ntf);
+        Ps[0] = Pst[0]; Ps[1] = Pst[1]; Ps[2] = Pst[2]; Pr[0] = Prt[0]; Pr[1] = Prt[1];Pr[2] = Prt[2]; L[0] = Lt[0]; L[1] = Lt[1] ; L[2] = Lt[2] ; HW = HWt ; B = Bt; N = Nt;
+        //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
+        refsCalculation();
+    }
+    return changed;
+}
+void EarlyRefAtkGen_next(EarlyRefAtkGen* unit,int inwrongNumSamples)
+{
+    int numSamples = unit->mWorld->mFullRate.mBufLength;
+    unit->m_pos += numSamples;
+    if(unit->m_pos >= unit->framesize){
+        unit->let_trig = true;
+        unit->m_pos = 0;
+    }
+    if(unit->let_trig){
+        if(unit->getargs(unit)){
+            ZOUT0(0) = 1.0;
+            //printf("send trig\n");
+            unit->let_trig = false;
+            unit->m_pos = 0;
+        }else{
+            ZOUT0(0) = 0.0;
+        }
+    }else{
+            ZOUT0(0) = 0.0;
+    }
+}
 PluginLoad(DWGReverb){
 	ft = inTable;
 	DefineDtorUnit(EarlyRef27);
     DefineDtorUnit(EarlyRef27Gen);
+    DefineDtorUnit(EarlyRefAtkGen);
     DefineDtorUnit(DWGReverb);
 }
