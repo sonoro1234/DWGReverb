@@ -1,0 +1,41 @@
+TITLE:: EarlyRef27Gen
+summary:: Early reflections generator
+categories:: UGens>Reverbs
+related:: Classes/DWGReverb, Classes/EarlyRefAtkGen, Classes/GVerb
+
+DESCRIPTION::
+
+Generates convolution kernels for early reflections in a mono-to-stereo reverb. Outputs a trigger whenever the buffers change.
+
+CLASSMETHODS::
+
+METHOD:: kr
+
+ARGUMENT:: bufL
+Left buffer. Both buffers should have the same size, and that size should be a power of 2 for use in link::Classes/Convolution2::.
+
+ARGUMENT:: bufR
+Right buffer.
+
+ARGUMENT:: source
+The x-, y-, and z-coordinates of the source audio in meters.
+
+ARGUMENT:: receiver
+The x-, y-, and z-coordinates of the listener in meters.
+
+ARGUMENT:: roomsize
+The width, height, and length of the room in meters.
+
+ARGUMENT:: hw
+Ear separation in meters.
+
+ARGUMENT:: b
+Reflection coefficient for the room's floor, walls, and ceiling.
+
+ARGUMENT:: n
+Controls the number of mirror images to model. n = 0 generates 27 mirror images, and n = 1 to 5 generates 8*(N*2+1)^3 mirror images.
+
+
+EXAMPLES::
+
+See link::Classes/DWGReverb:: for a full example.
