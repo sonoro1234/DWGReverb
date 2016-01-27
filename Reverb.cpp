@@ -217,7 +217,7 @@ void DWGReverb::setlengths2(float len){
 	}
 	Print("\n");
 }
-//Householder Feedback Matrix
+
 void DWGReverb::setcoeffs(float c1, float c3, float mix, float Fs){
 
 	this->mix = mix;
@@ -226,7 +226,7 @@ void DWGReverb::setcoeffs(float c1, float c3, float mix, float Fs){
 	}
 
 }
-
+//Householder Feedback Matrix
 void DWGReverb :: go(float *inA,float *outA[2],int inNumSamples)
 {
   float i[8];
@@ -252,6 +252,7 @@ void DWGReverb :: go(float *inA,float *outA[2],int inNumSamples)
 		for(int j=0;j<8;j++) {
 			delay[j].push(i[j]);
 			o[j] = decay[j].filter(delay[j].delay(lengths[j]-1));
+            //kill_denormals(o[j]);
 			//out += c[j] * o[j];//*.5;
 			//out[j%2] += c[j] * o[j];
 			out[0] += c[j] * o[j];
@@ -263,7 +264,7 @@ void DWGReverb :: go(float *inA,float *outA[2],int inNumSamples)
 		outA[1][k] =  mix*out[1] + (1.0-mix)*inA[k];
 	}
 }
-////////////////////////////////////////////
+////////////////////////////////////////////EarlyRef
 
 float dist(float im[3],float r[3]){
     float x = im[0] - r[0];
@@ -272,7 +273,264 @@ float dist(float im[3],float r[3]){
     return sqrt(x*x+y*y+z*z);
 }
 
+const int MaxNits = 2;
+//const int Nits = MaxNits;
+//const int Nrefs = pow((2*Nits + 1),3)*8;
+const int MaxNrefs = pow((2*MaxNits + 1),3);
+//const int Nrefs = MaxNrefs;
+struct EarlyRef:public Unit
+{
+	EarlyRef(Unit* unit);
+    float CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
+    void refsCalculation();
+    void filters_init();
+    void filters_tick(float in);
+    void filters_tickLR(float *inL,float *inR,float &outL,float &outR);
+    void findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res);
+    void getargs(Unit * unit);
+    CircularBuffer2POWSizedT<4096*16> MtapDel;
+    CircularBuffer2POWSizedT<4096*16> DelR;
+    CircularBuffer2POWSizedT<4096*16> DelL;
+    LTITv<1,1> filters[4];
+    LTITv<1,1> filtersL[4];
+    LTITv<1,1> filtersR[4];
+    float filters_out[5];
+	float L[3];
+    float Ps[3];
+    float Pr[3];
+    float Ps_[3];//center room is 0,0
+    float Pr_[3];
+    float B,HW,d0,p;
+    int N,Nrefs;
+    float samprate;
+    float delL[MaxNrefs],delR[MaxNrefs],ampL[MaxNrefs],ampR[MaxNrefs];
+    int RefN[MaxNrefs];
+};
+SCWrapClass(EarlyRef);
+EarlyRef::EarlyRef(Unit *unit)
+{
+    Ps[0] = ZIN0(1);
+    Ps[1] = ZIN0(2);
+    Ps[2] = ZIN0(3);
+    Pr[0] = ZIN0(4);
+    Pr[1] = ZIN0(5);
+    Pr[2] = ZIN0(6);
+    L[0] = ZIN0(7);
+    L[1] = ZIN0(8);
+    L[2] = ZIN0(9);
+    HW = ZIN0(10);
+    B = ZIN0(11);
+    N = sc_clip(ZIN0(12),0.0,(float)MaxNits);
+    Nrefs = pow((2*N + 1),3);
+    p = sc_clip(ZIN0(13),0.0,0.9);
+    samprate = SAMPLERATE;
+    //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
+    filters_init();
+    refsCalculation();
+    SETCALC(EarlyRef_next);
+}
+void EarlyRef::filters_init(){
+    printf("filter_init %g\n",p);
+    for(int i= 0;i<4;i++){
+        filtersL[i].KernelA = filtersR[i].KernelA = filters[i].KernelA = -p;
+        filtersL[i].KernelB = filtersR[i].KernelB = filters[i].KernelB = 1.0 - p;
+    }
+}
+void EarlyRef::filters_tick(float in)
+{
+    filters_out[0] = in;
+    for(int i= 0;i<4;i++){
+        filters_out[i+1] = filters[i].filter(filters_out[i]);
+    }
+}
+//filtering for first version
+void EarlyRef::filters_tickLR(float *inL,float *inR,float &outL,float &outR)
+{
+    outL = outR = 0.0;
+    for(int i= 0;i<4;i++){
+        outL = filtersL[i].filter(outL + inL[4-i]);
+        outR = filtersR[i].filter(outR + inR[4-i]);
+    }
+    outL += inL[0];
+    outR += inR[0];
+}
+float EarlyRef::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
+{
+    float image[3];
+    findImage(ux,uy,uz,lx,ly,lz,image);
+    float rec[3];
+    rec[0] = Pr_[0] - HW;
+    rec[1] = Pr_[1];
+    rec[2] = Pr_[2];
+    float distL = dist(image,rec);
+    rec[0] = Pr_[0] + HW;
+    float distR = dist(image,rec);
+    float preA = pow(B,exp);
+    ampL[n] = preA/(distL + 0.001);//d0*preA/(distL);
+    ampR[n] = preA/(distR + 0.001);//d0*preA/(distR);
+    delL[n] = samprate*distL/340.0;
+    delR[n] = samprate*distR/340.0;
+    RefN[n] = sc_min(exp,4);//only have until reflection 4 filtered
+    //printf("%d, %g, %g, %g, %g, %g, %g, %g\n",n,exp,ux,uy,uz,lx,ly,lz);
+    return distL;
+}
+void EarlyRef::refsCalculation(){
+    /*
+    for(int i=-10;i<=10;i++){
+        int a = i%2;
+        int b = i & -1;
+        printf("i :%d a is %d, b is %d\n",i,a,b);
+    }
+    */
+    //translate coordinates to origin in center room
+    Ps_[0] = Ps[0] - L[0]*0.5;
+    Ps_[1] = Ps[1] - L[1]*0.5;
+    Ps_[2] = Ps[2] - L[2]*0.5;
+    Pr_[0] = Pr[0] - L[0]*0.5;
+    Pr_[1] = Pr[1] - L[1]*0.5;
+    Pr_[2] = Pr[2] - L[2]*0.5;
+    unsigned long num = 0;
+    int u,v,w;
+    int absl,absm,absn;
+    for(int l = -N;l <=N;l++){
+            //u = 1.0 - 2.0*(l%2);
+            u = 1.0 - 2.0*(l & 1);
+            absl = abs(l);
+            for(int m = -N;m <=N;m++){
+                //v = 1.0 - 2.0*(m%2);
+                v = 1.0 - 2.0*(m & 1);
+                absm = abs(m);
+                for(int n = -N;n <=N;n++){
+                    //w = 1.0 - 2.0*(n%2);
+                    w = 1.0 - 2.0*(n & 1);
+                    absn = abs(n);
+                    float exp = absl + absm + absn;
+                    CalcOne(num,exp,u,v,w,l,m,n);
+                    num ++;
+                    }
+            }
+    }
+    printf("num is %d MaNrefs is %d Nrefs is %d\n",num,MaxNrefs,Nrefs);
+}
+void EarlyRef::findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res){
+    res[0] = ufx*Ps_[0] + lfx*L[0];
+    res[1] = ufy*Ps_[1] + lfy*L[1];
+    res[2] = ufz*Ps_[2] + lfz*L[2];
+}
+void EarlyRef::getargs(Unit *unit){
+    float Pst[3],Prt[3],Lt[3],HWt,Bt,pt;
+    int Nt;
+    Pst[0] = ZIN0(1);
+    Pst[1] = ZIN0(2);
+    Pst[2] = ZIN0(3);
+    Prt[0] = ZIN0(4);
+    Prt[1] = ZIN0(5);
+    Prt[2] = ZIN0(6);
+    Lt[0] = ZIN0(7);
+    Lt[1] = ZIN0(8);
+    Lt[2] = ZIN0(9);
+    HWt = ZIN0(10);
+    Bt = ZIN0(11);
+    Nt = sc_clip(ZIN0(12),0.0,(float)MaxNits);
 
+    bool changed = (Pst[0] != Ps[0] || Pst[1] != Ps[1] || Pst[2] != Ps[2] || Prt[0] != Pr[0] || Prt[1] != Pr[1] || Prt[2] != Pr[2] || Lt[0] != L[0] || Lt[1] != L[1] || Lt[2] != L[2] || HWt != HW || Bt != B || Nt != N);
+    if (changed) {
+        Ps[0] = Pst[0]; Ps[1] = Pst[1]; Ps[2] = Pst[2]; Pr[0] = Prt[0]; Pr[1] = Prt[1];Pr[2] = Prt[2]; L[0] = Lt[0]; L[1] = Lt[1] ; L[2] = Lt[2] ; HW = HWt ; B = Bt;N = Nt;
+        //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
+        Nrefs = pow((2*N + 1),3);
+        refsCalculation();
+    }
+    
+    pt = sc_clip(ZIN0(13),0.0,0.9);
+    if(p != pt){
+        p = pt;
+        filters_init();
+    }
+}
+void EarlyRef_next(EarlyRef* unit,int inNumSamples)
+{
+    unit->getargs(unit);
+    float * outL = OUT(0);
+    float * outR = OUT(1);
+    float * in = IN(0);
+    float * delL = unit->delL;
+    float * delR = unit->delR;
+    float * ampL = unit->ampL;
+    float * ampR = unit->ampR;
+    int Nrefs = unit->Nrefs;
+    /*/version 1 quicker
+    for(int i=0;i<inNumSamples; i++){
+        unit->MtapDel.push(in[i]);
+        float oL = 0.0;
+        float oR = 0.0;
+        for(int j=0;j<Nrefs;j++){
+            oL += unit->MtapDel.delay(unit->delL[j])*unit->ampL[j];
+            oR += unit->MtapDel.delay(unit->delR[j])*unit->ampR[j];
+        }
+        outL[i] = oL;
+        outR[i] = oR;
+    }
+    //*/
+    //*/version 1 filtered
+    float oL[5];
+    float oR[5];
+    for(int i=0;i<inNumSamples; i++){
+        unit->MtapDel.push(in[i]);
+
+        //for(int j=0;j<5;j++)
+            //oR[j] = oL[j] = 0.0;
+        memset(oR,0,sizeof(float)*5);
+        memset(oL,0,sizeof(float)*5);
+    
+        for(int j=0;j<Nrefs;j++){
+            oL[unit->RefN[j]] += unit->MtapDel.delay(unit->delL[j])*unit->ampL[j];
+            oR[unit->RefN[j]] += unit->MtapDel.delay(unit->delR[j])*unit->ampR[j];
+        }
+        
+        unit->filters_tickLR(oL,oR,outL[i],outR[i]);
+        //outL[i] = oL;
+        //outR[i] = oR;
+    }
+    //*/
+    /*// version 2:Mas lento no se bien por que!!
+    CircularBuffer2POWSizedT<4096*16> *DelR = &(unit->DelR);
+    CircularBuffer2POWSizedT<4096*16> *DelL = &(unit->DelL);
+    float *BufferL = DelL->Buffer;
+    float *BufferR = DelR->Buffer;
+    for(int i=0;i<inNumSamples; i++){
+        for(int j=0;j<Nrefs;j++){
+            DelL->add(in[i]*ampL[j], -(int)delL[j]);//neg is future
+            DelR->add(in[i]*ampR[j], -(int)delR[j]);
+            //BufferL[(DelL->pointer - (int)delL[j]) & DelL->mask] += in[i]*ampL[j];
+            //BufferR[(DelR->pointer - (int)delR[j]) & DelR->mask] += in[i]*ampR[j];
+        }
+        outL[i] = unit->DelL.get_tick();
+        outR[i] = unit->DelR.get_tick();        
+        
+    }
+    //*/
+    /*// version 2 filtered Mas lento no se bien por que!!
+    CircularBuffer2POWSizedT<4096*16> *DelR = &(unit->DelR);
+    CircularBuffer2POWSizedT<4096*16> *DelL = &(unit->DelL);
+    float *BufferL = DelL->Buffer;
+    float *BufferR = DelR->Buffer;
+    for(int i=0;i<inNumSamples; i++){
+        unit->filters_tick(in[i]);
+        for(int j=0;j<Nrefs;j++){
+            float filt_in = unit->filters_out[unit->RefN[j]];
+            DelL->add(filt_in*ampL[j], -(int)delL[j]);//neg is future
+            DelR->add(filt_in*ampR[j], -(int)delR[j]);
+            //BufferL[(DelL->pointer - (int)delL[j]) & DelL->mask] += in[i]*ampL[j];
+            //BufferR[(DelR->pointer - (int)delR[j]) & DelR->mask] += in[i]*ampR[j];
+        }
+        outL[i] = unit->DelL.get_tick();
+        outR[i] = unit->DelR.get_tick();        
+        
+    }
+    //*/
+    
+}
+/////////////////////////////////////////////////
 struct EarlyRef27:public Unit
 {
 	EarlyRef27(Unit* unit);
@@ -280,7 +538,8 @@ struct EarlyRef27:public Unit
     void refsCalculation();
     void findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res);
     void getargs(Unit * unit);
-    LagrangeMtapT<4096,27*2> LagDel;
+    LagrangeMtapT<4096*16,27*2> LagDel;
+    //CircularBuffer2POWSizedT<4096*16> LagDel;
 	float L[3];
     float Ps[3];
     float Pr[3];
@@ -319,8 +578,8 @@ float EarlyRef27::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,fl
     rec[0] = Pr[0] + HW;
     float distR = dist(image,rec);
     float preA = pow(B,exp);
-    ampL[n] = preA/(distL + 1);//d0*preA/(distL);
-    ampR[n] = preA/(distR + 1);//d0*preA/(distR);
+    ampL[n] = preA/(distL + 0.001);//d0*preA/(distL);
+    ampR[n] = preA/(distR + 0.001);//d0*preA/(distR);
     delL[n] = samprate*distL/340.0;
     delR[n] = samprate*distR/340.0;
     //printf("%g, %g, %g, %g, %g\n",d0,delL[n],delR[n],ampL[n],ampR[n]);
@@ -395,6 +654,8 @@ void EarlyRef27_next(EarlyRef27* unit,int inNumSamples)
         for(int j=0;j<27;j++){
             oL += unit->LagDel.delay(unit->delL[j],j*2)*unit->ampL[j];
             oR += unit->LagDel.delay(unit->delR[j],j*2+1)*unit->ampR[j];
+            //oL += unit->LagDel.delay(unit->delL[j])*unit->ampL[j];
+            //oR += unit->LagDel.delay(unit->delR[j])*unit->ampR[j];
         }
         outL[i] = oL;
         outR[i] = oR;
@@ -446,7 +707,7 @@ struct EarlyRef27Gen:public Unit
     float bufnumL,bufnumR;
     bool let_trig;
     SndBuf *sndbufL, *sndbufR;
-    unsigned int framesize, m_pos;
+    unsigned int framesize,framesize_1, m_pos;
 };
 SCWrapClass(EarlyRef27Gen);
 EarlyRef27Gen::EarlyRef27Gen(Unit *unit)
@@ -465,6 +726,7 @@ EarlyRef27Gen::EarlyRef27Gen(Unit *unit)
     Clear(sndbufL->samples, sndbufL->data);
     Clear(sndbufR->samples, sndbufR->data);
     framesize = sc_min(sndbufL->frames,sndbufR->frames);
+    framesize_1 = framesize - 1;
     let_trig = true;
     m_pos = 0;
     //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
@@ -493,8 +755,8 @@ float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx
     rec[0] = Pr[0] + HW;
     float distR = dist(image,rec);
     float preA = pow(B,exp);
-    ampl = preA/(distL + 0.1);//d0*preA/(distL);
-    ampr = preA/(distR + 0.1);//d0*preA/(distR);
+    ampl = preA/(distL + 0.001);//d0*preA/(distL);
+    ampr = preA/(distR + 0.001);//d0*preA/(distR);
     dell = samprate*distL/340.0;
     delr = samprate*distR/340.0;
     //printf("%g, %g, %g, %g, %g\n",d0,delL[n],delR[n],ampL[n],ampR[n]);
@@ -849,6 +1111,7 @@ void EarlyRefAtkGen_next(EarlyRefAtkGen* unit,int inwrongNumSamples)
 }
 PluginLoad(DWGReverb){
 	ft = inTable;
+    DefineDtorUnit(EarlyRef);
 	DefineDtorUnit(EarlyRef27);
     DefineDtorUnit(EarlyRef27Gen);
     DefineDtorUnit(EarlyRefAtkGen);
