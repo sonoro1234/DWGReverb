@@ -81,6 +81,7 @@ long Nchoose(long n, long k);
 float ValimakiDispersion(float B, float f, int M);
 void kill_denormals(float &val);
 void kill_denormals(double &val);
+/*
 ///////////////////////////
 //Circular BufferT
 template<int size>
@@ -96,45 +97,65 @@ class CircularBufferTBase
 		memset(Buffer, 0, size * sizeof(float));
 		//Print("CircularBufferTBase\n");
 	}
+    virtual void inc() = 0;
+    virtual int pointerInRange(int p)=0;
+	virtual float delay(int pos)=0;
+    
 	void push(float a){
-		pointer--;
-		if(pointer < 0)
-			pointer = size - 1;
+        inc();
 		Buffer[pointer] = a;
 	}
-	void push(float a,int pos){
+	//void push(float a,int pos){
+	//	Buffer[pointerInRange(pointer + pos)] = a;
+	//}
+	inline void add(float a,int pos){
+		Buffer[pointerInRange(pointer + pos)] += a;
+	}
+    inline void set(float a){
+        Buffer[pointer] = a;
+    }
+	void set(float a,int pos){
 		Buffer[pointerInRange(pointer + pos)] = a;
 	}
-	void add(float a,int pos){
-		int posr = pointerInRange(pointer + pos);
-		Buffer[posr] += a;
-	}
-	void set(float a,int pos){
-		int posr = pointerInRange(pointer + pos);
-		Buffer[posr] = a;
-	}
-	virtual int pointerInRange(int p)=0;
-	float get()
+
+	inline float get()
 	{
 		return Buffer[pointer];
 	}
+    float get_tick()
+    {
+        float ret = Buffer[pointer];
+        Buffer[pointer] = 0.0;
+        inc();
+        return ret;
+    }
 	float get(int pos)
 	{
 		return Buffer[pointerInRange(pointer + pos)];
 	}
 	
-	virtual float delay(int pos)=0;
 };
+//*/
 template<int size>
-class CircularBufferT : public CircularBufferTBase<size>
+class CircularBufferT //: public CircularBufferTBase<size>
 {
 	public:
+    float Buffer[size];
+	int pointer;
+    CircularBufferT(){
+		pointer = 0;
+		memset(Buffer, 0, size * sizeof(float));
+	}
 	int pointerInRange(int p){
 		p = p%size;
 		if( p < 0 ){ p += size;}
 		return p;
 	}
-	
+	inline void inc(){
+        this->pointer--;
+		if(this->pointer < 0)
+			this->pointer = size - 1;
+    }
 	float delay(int pos)
 	{
 		assertv(size >= pos);
@@ -143,28 +164,102 @@ class CircularBufferT : public CircularBufferTBase<size>
 		if( pAl2 < 0 ){ pAl2 += size;}
 		return this->Buffer[pAl2];
 	}
+////////
+	void push(float a){
+        inc();
+		Buffer[pointer] = a;
+	}
+	//void push(float a,int pos){
+	//	Buffer[pointerInRange(pointer + pos)] = a;
+	//}
+	inline void add(float a,int pos){
+		Buffer[pointerInRange(pointer + pos)] += a;
+	}
+    inline void set(float a){
+        Buffer[pointer] = a;
+    }
+	void set(float a,int pos){
+		Buffer[pointerInRange(pointer + pos)] = a;
+	}
 
+	inline float get()
+	{
+		return Buffer[pointer];
+	}
+    float get_tick()
+    {
+        float ret = Buffer[pointer];
+        Buffer[pointer] = 0.0;
+        inc();
+        return ret;
+    }
+	float get(int pos)
+	{
+		return Buffer[pointerInRange(pointer + pos)];
+	}
+    
 };
+
 //((x & (x - 1)) == 0)
 ///////////////////////////
 //Circular Buffer with size power of two
 template<int size>
-class CircularBuffer2POWSizedT : public CircularBufferTBase<size>
+class CircularBuffer2POWSizedT //: public CircularBufferTBase<size>
 {
 	public:
+    float Buffer[size];
+	int pointer;
 	int mask;
+
 	//static_assert(ispowerof2(size),"Size mus be power of two!!!");
-	CircularBuffer2POWSizedT(){mask = size - 1;//Print("CircularBuffer2POWSizedT\n");
+	CircularBuffer2POWSizedT(){
+        mask = size - 1;
 		//assertv(ispowerof2(size));
-		
+		pointer = 0;
+		memset(Buffer, 0, size * sizeof(float));
 	}
-	int pointerInRange(int p){
+	inline int pointerInRange(int p){
 		return p & mask;
 	}
-	float delay(int pos)
+    inline void inc(){this->pointer = (this->pointer - 1) & mask;}
+    //inline void add(float a,int pos){this->Buffer[(this->pointer + pos) & mask] += a;}
+	inline float delay(int pos)
 	{
 		assertv(size >= pos);
 		return this->Buffer[(this->pointer + pos) & mask];
+	}
+///////////////
+	void push(float a){
+        inc();
+		Buffer[pointer] = a;
+	}
+	//void push(float a,int pos){
+	//	Buffer[pointerInRange(pointer + pos)] = a;
+	//}
+	inline void add(float a,int pos){
+		Buffer[pointerInRange(pointer + pos)] += a;
+	}
+    inline void set(float a){
+        Buffer[pointer] = a;
+    }
+	inline void set(float a,int pos){
+		Buffer[pointerInRange(pointer + pos)] = a;
+	}
+
+	inline float get()
+	{
+		return Buffer[pointer];
+	}
+    inline float get_tick()
+    {
+        float ret = Buffer[pointer];
+        Buffer[pointer] = 0.0;
+        inc();
+        return ret;
+    }
+	inline float get(int pos)
+	{
+		return Buffer[pointerInRange(pointer + pos)];
 	}
 };
 
@@ -462,6 +557,9 @@ class LTITv
 		cbufout.push(sum);
 		return sum;
 	}
+    float get(){
+        return cbufout.get();
+    }
 	float groupdelay(float f,float FS){
 		if(dirty_grdel){
 			grdel = ::groupdelay(f,KernelB,kernel_sizeB,KernelA,kernel_sizeA,FS);
@@ -513,11 +611,14 @@ class LTITv<1,1>
 	{
 		//float sum=0.;
 		float sum = KernelB*cbuf;
-		sum -= KernelA*cbufout;	
+		sum -= KernelA*cbufout;
 		//sum = zapgremlins(sum);
 		cbufout = sum;
 		return sum;
 	}
+    float get(){
+        return cbufout;
+    }
 	float groupdelay(float f,float FS){
 		if(dirty_grdel){
 			grdel = ::groupdelay(f,&KernelB,1,&KernelA,1,FS);
