@@ -34,4 +34,4 @@ include_directories(${SC_PATH}/external_libraries/nova-simd)
 add_definitions("-DNOVA_SIMD")
 
 #INSTALL(TARGETS ${PROYECTO} ${PROYECTO}_supernova LIBRARY DESTINATION "C:/SupercolliderRepos/plugins/mingw48/source/")
-INSTALL(TARGETS ${PROYECTO} ${PROYECTO}_supernova LIBRARY DESTINATION "C:/SupercolliderRepos/Mios/ugens/")
+INSTALL(TARGETS ${PROYECTO} ${PROYECTO}_supernova LIBRARY DESTINATION ${INSTALL_DIR})
