@@ -1,7 +1,7 @@
 TITLE:: EarlyRefAtkGen
 summary:: Early reflections generator
 categories:: UGens>Reverbs
-related:: Classes/DWGReverb, Classes/EarlyRef27Gen, Classes/GVerb
+related:: Classes/DWGReverbC1C3, Classes/EarlyRef27Gen, Classes/GVerb
 
 DESCRIPTION::
 
@@ -58,7 +58,7 @@ SynthDef(\testatk, {
     trig = EarlyRefAtkGen.kr(bufs[0], bufs[1], bufs[2], bufs[3], source, receiver, roomsize, hw, b.neg, n);
     ambi = bufs.collect { |buf| Convolution2.ar(in, buf, trig, ~nbuf) };
     early = FoaDecode.ar(ambi, ~decoder);
-    sig = DWGReverb.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
+    sig = DWGReverbC1C3.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
     sig = Select.ar(bypass, [sig, in]);
     Out.ar(out, sig);
 }).add;

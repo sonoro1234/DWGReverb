@@ -1,4 +1,4 @@
-TITLE:: DWGReverb
+TITLE:: DWGReverbC1C3
 summary:: Digital waveguide reverberator
 categories:: UGens>Reverbs
 related:: Classes/EarlyRef27Gen, Classes/EarlyRefAtkGen, Classes/GVerb
@@ -49,7 +49,7 @@ SynthDef(\testearly,{
     sigL = Convolution2.ar(in, bufL, trig, ~nbuf);
     sigR = Convolution2.ar(in, bufR, trig, ~nbuf);
     early = [sigL, sigR];
-    sig = DWGReverb.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
+    sig = DWGReverbC1C3.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
     sig = Select.ar(bypass, [sig, in]);
     Out.ar(out, sig);
 }).add;

@@ -20,7 +20,7 @@ EarlyRefAtkGen : UGen {
 
 }
 
-DWGReverb : MultiOutUGen {
+DWGReverbC1C3 : MultiOutUGen {
 
     *ar {
         arg
@@ -31,7 +31,7 @@ DWGReverb : MultiOutUGen {
             mix = 1,
             coefs = [1,0.9464,0.87352,0.83,0.8123,0.7398,0.69346,0.6349],
             doprime = 0;
-        (coefs.size == 8).not.if { ^Error("Length of coefs in DWGReverb must be 8").throw; };
+        (coefs.size == 8).not.if { ^Error("Length of coefs in DWGReverbC1C3 must be 8").throw; };
         ^this.multiNewList(['audio', in, len, c1, c3, mix, doprime] ++ coefs);
     }
 

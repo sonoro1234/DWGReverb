@@ -67,6 +67,13 @@ void volcar(const char *_Message, const char *_File, unsigned _Line);
 void classname##_Ctor(classname* unit){new(unit) classname(unit);}\
 void classname##_Dtor(classname* unit){unit->~classname();}
 
+#define SCWrapClassT(classname) extern "C" {\
+	void classname##_Ctor(classname* unit);\
+	void classname##_next(classname *unit, int inNumSamples);\
+	void classname##_Dtor(classname *unit);\
+}\
+void classname##_Ctor(classname* unit){new(unit) classname(unit);SETCALC(classname##_next);}\
+void classname##_Dtor(classname* unit){unit->~classname();}
 
 inline bool approximatelyEqual(float a, float b, float epsilon = 1e-7f)
 {
@@ -930,6 +937,24 @@ struct ThirianT : public LTITv<N+1,N>
 		//}
 	}
 };
+template<int size>
+struct AllPass2powT{
+    CircularBuffer2POWSizedT<size> delay;
+    int M;
+    float a;
+    AllPass2powT():M(size),a(0.7){}
+    void set_coeffs(int Mt,float at){
+        
+        M = std::min(size,std::max(1,Mt)) - 1;
+        a = std::min(1.0f,std::max(-1.0f,at));
+    }
+    float filter(float in){
+        float vo = delay.delay(M);
+        float v = in - a*vo;
+        delay.push(v);
+        return a*v + vo;
+    }
+};
 struct FilterC1C3 : public LTITv<1,1>
 {
 	float freq;
@@ -961,8 +986,8 @@ struct FilterT0TN : public FilterC1C3
 	float ftN;
 	FilterT0TN():t0(0),ftN(0){};
 	void setcoeffs(float freq,float t0,float ftN){
-		//if(this->freq == freq && this->t0 == t0 && this->ftN == ftN)
-		if(approximatelyEqual(this->freq,freq) && approximatelyEqual(this->t0,t0) && approximatelyEqual(this->ftN,ftN))
+		if(this->freq == freq && this->t0 == t0 && this->ftN == ftN)
+		//if(approximatelyEqual(this->freq,freq) && approximatelyEqual(this->t0,t0) && approximatelyEqual(this->ftN,ftN))
 			return;
 		//if(std::islessgreater(this->freq,freq) || std::islessgreater(this->t0,t0) || std::islessgreater(this->ftN,ftN)){
 			Print("this freq %g c1 %g c3 %g\n",this->freq - freq,this->t0-t0,this->ftN-ftN);
@@ -976,19 +1001,119 @@ struct FilterT0TN : public FilterC1C3
 		//}
 	}
 };
-struct FDN8{
-	FilterC1C3 decay[8];
-	CircularBuffer2POWSizedT<1024> delay[8];
-	void setcoeffs(float c1, float c3, float mix, float Fs);
-	void setlengths(float len[8]);
-	float go(float in) ;
-	float mix;
-	float A[8][8];
-	float o[8];
-	float b[8];
-	float c[8];
-	int lengths[8];// = {37,87,181,271,359,593,688,721};//{37, 87, 181,271, 359, 492, 687, 721};//{37,87,181,271,359,592,687,721};
+
+//////////////////////////////////////////////////////
+//Householder Feedback Matrix
+
+template<typename Tdecay,int size,int sizedel>
+struct FDN_HH_Base{
+	Tdecay decay[size];
+	CircularBuffer2POWSizedT<sizedel> delay[size];
+	float mix,fac;
+	float o[size];
+    int o_perm[size];
+	float c[size],cR[size];
+	int lengths[size];// = {37,87,181,271,359,593,688,721};//{37, 87, 181,271, 359, 492, 687, 721};//{37,87,181,271,359,592,687,721};
+    FDN_HH_Base(){
+        fac = 2.0/(float)size;
+        mix = 1.0;
+        for(int k=0;k<size;k++) {
+            o[k] = 0.0;
+            o_perm[k] = (k+1)%size;
+            c[k] = (k%2==0)?1.0:-1.0;
+            cR[k] = ((k/2)%2==0)?1.0:-1.0;
+        }
+    }
+    void setlengths(float len[size]){
+        for(int i=0;i<size;i++)
+            lengths[i] = sc_min(len[i],sizedel);
+    }
+    
+    float go(float in) 
+    {
+        float i[size];
+        float sumo = 0;
+        for(int j=0;j<size;j++)
+            sumo += o[j];
+        sumo *= fac;
+        sumo -= in;
+        for(int j=0;j<size;j++)
+            i[j] = o[o_perm[j]] - sumo;
+        
+        float out = 0.0;  
+        for(int j=0;j<size;j++) {
+            delay[j].push(i[j]);
+            o[j] = decay[j].filter(delay[j].delay(lengths[j]));
+            out += c[j] * o[j];
+        }
+        out *= fac;
+        return mix*out + (1.0-mix)*in;
+    }
+    void go(float *in,float *outA, int N) 
+    {
+        float i[size];
+        for(int k=0; k<N; k++){
+            float sumo = 0;
+            for(int j=0;j<size;j++)
+                sumo += o[j];
+            sumo *= fac;
+            sumo -= in[k];
+            for(int j=0;j<size;j++)
+                i[j] = o[o_perm[j]] - sumo;
+            
+            float out = 0.0;  
+            for(int j=0;j<size;j++) {
+                delay[j].push(i[j]);
+                o[j] = decay[j].filter(delay[j].delay(lengths[j]));
+                out += c[j] * o[j];
+            }
+            out *= fac;
+            outA[k] = mix*out + (1.0-mix)*in[k];
+        }
+    }
+    void go_st(float *in,float *outA[2], int N) 
+    {
+        float i[size];
+        for(int k=0; k<N; k++){
+            float sumo = 0;
+            for(int j=0;j<size;j++)
+                sumo += o[j];
+            sumo *= fac;
+            sumo -= in[k];
+            for(int j=0;j<size;j++)
+                i[j] = o[o_perm[j]] - sumo;
+            
+            float out[2];out[0]=0;out[1]=0;
+            for(int j=0;j<size;j++) {
+                delay[j].push(i[j]);
+                o[j] = decay[j].filter(delay[j].delay(lengths[j]));
+                out[0] += c[j] * o[j];
+                out[1] += cR[j] * o[j];
+            }
+            out[0] *=fac;
+            out[1] *=fac;
+
+            outA[0][k] =  mix*out[0] + (1.0-mix)*in[k];
+            outA[1][k] =  mix*out[1] + (1.0-mix)*in[k];
+        }
+    }
 };
+//FDNBase derived for C1C3
+template<int size,int sizedel>
+struct FDNC1C3: public FDN_HH_Base<FilterC1C3,size,sizedel>{
+    float c1,c3;
+    void setcoeffs(float c1, float c3, float mix, float Fs){
+        this->mix = mix;
+        this->c1 = c1;
+        this->c3 = c3;
+        for(int k=0;k<size;k++) {
+            this->decay[k].setcoeffs(Fs/this->lengths[k],c1,c3);
+        }
+    }
+};
+
+///////////////////////////////////
+
 template<int M>
 struct ThirianDispersion{
 

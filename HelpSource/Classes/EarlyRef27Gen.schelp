@@ -1,7 +1,7 @@
 TITLE:: EarlyRef27Gen
 summary:: Early reflections generator
 categories:: UGens>Reverbs
-related:: Classes/DWGReverb, Classes/EarlyRefAtkGen, Classes/GVerb
+related:: Classes/DWGReverbC1C3, Classes/EarlyRefAtkGen, Classes/GVerb
 
 DESCRIPTION::
 
@@ -38,4 +38,4 @@ Controls the number of mirror images to model. n = 0 generates 27 mirror images,
 
 EXAMPLES::
 
-See link::Classes/DWGReverb:: for a full example.
+See link::Classes/DWGReverbC1C3:: for a full example.

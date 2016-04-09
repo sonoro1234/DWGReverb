@@ -10,149 +10,53 @@ InterfaceTable *ft;
 
 ///////////////////////////////////////////////////////
 #include "dwglib/DWG.cpp"
-/*
-struct FilterC1C3 : public LTITv<1,1>
-{
-	float freq;
-	float c1;
-	float c3;
-	FilterC1C3(){c1 = 0;c3 = 0; freq = 0;};
-	void setcoeffs(float freq,float c1,float c3){
-		if(this->freq != freq || this->c1 != c1 || this->c3 != c3){
-			float g = 1.0 - c1/freq;
-			float b = 4.0*c3+freq;
-			float a1 = (-b+sqrt(b*b-16.0*c3*c3))/(4.0*c3);
-			KernelB[0] = g*(1+a1);
-			KernelA[0] = a1;
-			this->freq = freq;
-			this->c1 = c1;
-			this->c3 = c3;
-		}
-	}
-};
-struct Biquad : public LTITv<3,2>
-{
-	enum biquadtype {
-		pass = 0,
-		low,
-		high,
-		notch
-	};
-	void setcoeffs(float f0, float fs, float Q, int type){
-		float a = 1/(2*tan(M_PI*f0/fs));
-		float a2 = a*a;
-		float aoQ = a/Q;
-		float d = (4*a2+2*aoQ+1);
 
-		KernelA[0] = -(8*a2-2) / d;
-		KernelA[1] = (4*a2 - 2*aoQ + 1) / d;
 
-		switch(type) {
-		case pass:
-			KernelB[0] = 2*aoQ/d;
-			KernelB[1] = 0;
-			KernelB[2] = -2*aoQ/d;
-			break;
-		case low:
-			KernelB[0] = 1/d;
-			KernelB[1] = 2/d;
-			KernelB[2] = 1/d;
-			break;
-		case high:
-			KernelB[0] = 4*a2/d;
-			KernelB[1] = -8*a2/d;
-			KernelB[2] = 4*a2/d;
-			break;
-		case notch:
-			KernelB[0] = (1+4*a2)/d;
-			KernelB[1] = (2-8*a2)/d;
-			KernelB[2] = (1+4*a2)/d;
-			break;
-		}
-	}
-};
-*/
-struct DWGReverb : public Unit
+///////////////////DWGAllpass
+struct DWGAllpass : public Unit
 {
-	FilterC1C3 decay[8];
-	//LagrangeT<1024*128> delay[8];
-	CircularBuffer2POWSizedT<1024*32> delay[8];
-	void setcoeffs(float c1, float c3, float mix, float Fs);
-	void setlengths(float len);
-	void setlengths2(float len);
-	void go(float *in,float *out[2],int N) ;
-	float mix;
-	float len;
-	float A[8][8];
-	float o[8];
-	float b[8];
-	float c[8];
-	float cR[8];
-	float factors[8];
-	float lengths[8] = {37,87,181,271,359,593,688,721};//{37,87,181,271,359,592,687,721};
+    AllPass2powT<1024*2> allpass;
+    DWGAllpass(Unit *unit);
+};
+
+SCWrapClass(DWGAllpass);
+
+DWGAllpass::DWGAllpass(Unit *unit){
+    SETCALC(DWGAllpass_next);
+}
+
+void DWGAllpass_next(DWGAllpass *unit,int numsamples)
+{
+    float* in = ZIN(0);
+    float* out = ZOUT(0);
+    int M = ZIN0(1);
+    float a = sc_clip(ZIN0(2),-1,1);
+    unit->allpass.set_coeffs(M,a);
+    for(int i=0;i<numsamples;i++){
+        out[i] = unit->allpass.filter(in[i]);
+    }
+}
+
+
+//////////////////////////////Reverb FDN
+template<template<int,int>class Tfdn,int size,int sizedel>
+struct DWGReverbBase : public Unit
+{
+    Tfdn<size,sizedel> fdn;
+
+	void setlengths();
+	//void setlengths2();
+    float len,mix;
+    float SR;
+	float factors[size];
 	float doprime;
-	DWGReverb(DWGReverb *unit);
+	DWGReverbBase(DWGReverbBase *unit);
 };
-
-extern "C"
-{
-	void DWGReverb_next(DWGReverb *unit, int inNumSamples);
-	void DWGReverb_Ctor(DWGReverb* unit);
-	void DWGReverb_Dtor(DWGReverb* unit);
-}
-void DWGReverb_Ctor(DWGReverb* unit)
-{
-	new(unit) DWGReverb(unit);
-}
-void DWGReverb_Dtor(DWGReverb* unit)
-{
-	unit->~DWGReverb();
-}
-void DWGReverb_next(DWGReverb  *unit, int inNumSamples)
-{
-	float *out[2];
-	out[0] = OUT(0);
-	out[1] = OUT(1);
-	float *in = IN(0);
-	float len = ZIN0(1);
-	float c1 = ZIN0(2);
-	float c3 = ZIN0(3);
-	float mix = ZIN0(4);
-	unit->setlengths(len);
-	unit->setcoeffs(c1,c3,mix,SAMPLERATE);
-	//for(int i = 0; i < inNumSamples; i++)
-	//	out[i] = unit->reverb(in[i]);
-	unit->go(in,out,inNumSamples);
+template<template<int,int>class Tfdn,int size,int sizedel>
+DWGReverbBase<Tfdn,size,sizedel>::DWGReverbBase(DWGReverbBase *unit){
+    SR = SAMPLERATE;
 }
 
-DWGReverb::DWGReverb(DWGReverb *unit){
-	float a = -1.0/4.0;
-	float aa[8] = {a,1+a,a,a,a,a,a,a};
-	float tcR[8] = {-1,1,1,-1,-1,1,1,-1};
-	for(int k=0;k<8;k++){
-			o[k] = 0;
-			b[k] = 1;
-			c[k] = k<8?((k%2==0)?1.0/8.0:-1.0/8.0):0.0;
-			cR[k] = tcR[k]*1.0/8.0;
-	}
-	
-	for(int j=0;j<8;j++)
-		for(int k=0;k<8;k++)
-			A[j][k] = aa[(8+(k-j))%8];
-			
-	this->len = 0;
-	float len = ZIN0(1);
-	float c1 = ZIN0(2);
-	float c3 = ZIN0(3);
-	float mix = ZIN0(4);
-	doprime = IN0(5);
-	for(int i=0;i<8;i++)
-		this->factors[i] = IN0(6+i);
-	
-	unit->setlengths(len);
-	unit->setcoeffs(c1,c3,mix,SAMPLERATE);
-	SETCALC(DWGReverb_next);
-};
 bool isprime(int n)
 {
   unsigned int i;
@@ -178,34 +82,35 @@ int nearestprime(int n, float rerror)
   }
   return(-1);
 }
-void DWGReverb::setlengths(float len){
-	//float factors[8] = {1,0.9464,0.87352,0.83,0.8123,0.7398,0.69346,0.6349};
-	if(this->len == len)
-		return;
-	this->len = len;
+template<template<int,int>class Tfdn,int size,int sizedel>
+void DWGReverbBase<Tfdn,size,sizedel>::setlengths(){
+    //Print("setlengths\n");
 	float lent;
-	for(int i = 0;i < 8 ;i++){
-		if(doprime==1)
+    float lengths[size];
+	for(int i = 0;i < size ;i++){
+		if(doprime==1){
 			lent = nearestprime(len * factors[i],0.5);
-		else
+            if(lent == -1){
+                Print("DWGReverb error nearestprime\n");
+                lent = len * factors[i];
+            }else{
+                //Print("nearest %g",lent);
+            }
+            //Print("\n");
+		}else
 			lent = len * factors[i];
-		if(lent == -1){
-			Print("DWGReverb error nearestprime\n");
-			lent = len * factors[i];
-		}else{
-			//Print("nearest %g",lent);
-		}
-		//Print("\n");
+		//Print("len %d: %g factor:%g \n",i,lent,factors[i]);
 		lengths[i] = lent;
 	}
+    fdn.setlengths(lengths);
 	//Print("\n");
 }
-void DWGReverb::setlengths2(float len){
+/*
+template<typename Tfdn>
+void DWGReverbBase<Tfdn>::setlengths2(){
 	int primes[8] = {19,17,13,11,7,5,3,2};
 	//float factors[8] = {1,0.9464,0.87352,0.83,0.8123,0.7398,0.69346,0.6349};
-	if(this->len == len)
-		return;
-	this->len = len;
+
 	float lent;
 	int lent2;
 	for(int i = 0;i < 8 ;i++){
@@ -213,58 +118,204 @@ void DWGReverb::setlengths2(float len){
 		int mi = floor(0.5 + (log(lent)/log(primes[i])));
 		lent2 = pow(primes[i],mi);
 		Print("nearest %g %d %d\n",lent,lent2,mi);
-		lengths[i] = lent2;
+		fdn.lengths[i] = lent2;
 	}
 	Print("\n");
 }
-
-void DWGReverb::setcoeffs(float c1, float c3, float mix, float Fs){
-
-	this->mix = mix;
-	for(int k=0;k<8;k++) {
-		decay[k].setcoeffs(Fs/lengths[k],c1,c3);
-	}
-
-}
-//Householder Feedback Matrix
-void DWGReverb :: go(float *inA,float *outA[2],int inNumSamples)
-{
-  float i[8];
-/*
-  for(int j=0;j<8;j++) {
-    i[j] = in; //b[j] * in;
-    for(int k=0;k<8;k++) {
-      i[j] += A[j][k] * o[k];
-    }
-  }
 */
-	for(int k=0; k< inNumSamples ;k++){
-		float sumo = 0;
-		for(int j=0;j<8;j++)
-			sumo += o[j];
-		sumo *= 0.25;
-		sumo -= inA[k];
-		for(int j=0;j<8;j++)
-			i[j] = o[j] - sumo;
-			
-		float out[2];out[0]=0;out[1]=0;
-		//float out = 0;
-		for(int j=0;j<8;j++) {
-			delay[j].push(i[j]);
-			o[j] = decay[j].filter(delay[j].delay(lengths[j]-1));
-            //kill_denormals(o[j]);
-			//out += c[j] * o[j];//*.5;
-			//out[j%2] += c[j] * o[j];
-			out[0] += c[j] * o[j];
-			out[1] += cR[j] * o[j];
-		}
-		//out[1] = out[0];
-		
-		outA[0][k] =  mix*out[0] + (1.0-mix)*inA[k];
-		outA[1][k] =  mix*out[1] + (1.0-mix)*inA[k];
-	}
+///C1C3 derivation
+template<int size,int sizedel>
+struct DWGReverbC1C3T : public DWGReverbBase<FDNC1C3,size,sizedel>
+{
+    float c1,c3;//for c1,c3 implementation
+	void setcoeffs();
+    void get_args(Unit* unit,bool force = false);
+	DWGReverbC1C3T(DWGReverbC1C3T *unit):DWGReverbBase<FDNC1C3,size,sizedel>(unit){get_args(unit,true);};
+};
+template<int size,int sizedel>
+void DWGReverbC1C3T<size,sizedel>::get_args(Unit*unit,bool force)
+{
+
+    float lent = sc_clip(ZIN0(1),2.0,1024.0*8.0);
+	float c1_t = sc_clip(ZIN0(2),0.1,1000);
+	float c3_t = sc_clip(ZIN0(3),0.1,1000);
+    bool docoefs = false;
+	float mix = this->fdn.mix = sc_clip(ZIN0(4),0.0,1.0);
+    this->doprime = ZIN0(5);
+	for(int i=0;i<size;i++)
+		this->factors[i] = ZIN0(6+i);
+    for(int i=0;i<size;i++)
+		this->fdn.o_perm[i] = ZIN0(6+size+i);
+    if(lent != this->len || force){
+        this->len = lent;
+        this->setlengths();
+        docoefs = true;
+    }
+    if(docoefs || c1_t != c1 || c3_t != c3 || force){
+        c1 = c1_t;
+        c3 = c3_t;
+        this->setcoeffs();
+    }
 }
-////////////////////////////////////////////EarlyRef
+template<int size,int sizedel>
+void DWGReverbC1C3T<size,sizedel>::setcoeffs(){
+		this->fdn.setcoeffs(c1,c3,1.0,this->SR);
+}
+
+////////////instantiation DWGReverbC1C3
+typedef  DWGReverbC1C3T<8,1024*8> DWGReverbC1C3;
+SCWrapClassT(DWGReverbC1C3);
+void DWGReverbC1C3_next(DWGReverbC1C3  *unit, int inNumSamples)
+{
+	float *out[2];
+	out[0] = OUT(0);
+	out[1] = OUT(1);
+	float *in = IN(0);
+    unit->get_args(unit);
+
+	unit->fdn.go_st(in,out,inNumSamples);
+}
+////////////instantiation DWGReverbC1C3_16
+typedef  DWGReverbC1C3T<16,1024*8> DWGReverbC1C3_16;
+SCWrapClassT(DWGReverbC1C3_16);
+void DWGReverbC1C3_16_next(DWGReverbC1C3_16  *unit, int inNumSamples)
+{
+	float *out[2];
+	out[0] = OUT(0);
+	out[1] = OUT(1);
+	float *in = IN(0);
+    unit->get_args(unit);
+
+	unit->fdn.go_st(in,out,inNumSamples);
+}
+
+//////////////////////////implementation Zitarev1 filter
+class Filt1
+{
+public:
+    
+    Filt1 (void) : _slo (0), _shi (0) {}
+    ~Filt1 (void) {}
+    void calc_chi(float _fsamp,float _xover,float _fdamp,float &wlo,float & chi){
+        wlo = 6.2832f * _xover / _fsamp;
+        if (_fdamp > 0.49f * _fsamp)
+            chi = 2.0f;
+        else 
+            chi = 1.0f - cosf (6.2832f * _fdamp / _fsamp);
+    }
+    //void  set_params (float del, float tmf, float tlo, float wlo, float thi, float chi);
+    void set_params (float del, float tmf, float tlo, float wlo, float thi, float chi)
+    {
+        float g, t;
+
+        _gmf = powf (0.001f, del / tmf);
+        _glo = powf (0.001f, del / tlo) / _gmf - 1.0f;
+        _wlo = wlo;    
+        g = powf (0.001f, del / thi) / _gmf;
+        t = (1 - g * g) / (2 * g * g * chi);
+        _whi = (sqrtf (1 + 4 * t) - 1) / (2 * t); 
+    } 
+    float filter (float x)
+    {
+        _slo += _wlo * (x - _slo); //+ 1e-10f;
+        x += _glo * _slo;
+        _shi += _whi * (x - _shi);
+        return _gmf * _shi;
+    }
+    float   _gmf;
+    float   _glo;
+    float   _wlo;
+    float   _whi;
+    float   _slo;
+    float   _shi;    
+};
+
+template<int size,int sizedel>
+struct FDNZita: public FDN_HH_Base<Filt1,size,sizedel>{
+    //float xover,rtlow,rtmid,fdamp;
+    void setcoeffs(float xover,float rtlow, float rtmid,float fdamp,float SR){
+        float wlo,chi;
+        this->decay[0].calc_chi(SR, xover, fdamp, wlo, chi);
+        for (int i = 0; i < size; i++){
+             this->decay[i].set_params(this->lengths[i]/SR, rtmid, rtlow, wlo, 0.5f * rtmid, chi);
+        }
+    }        
+};
+
+//Zita derivation
+template<int size,int sizedel>
+struct DWGReverbZitaT : public DWGReverbBase<FDNZita,size,sizedel>
+{
+    float xover,rtlow,rtmid,fdamp;
+	void setcoeffs();
+    void get_args(Unit* unit,bool force = false);
+	DWGReverbZitaT(DWGReverbZitaT *unit):DWGReverbBase<FDNZita,size,sizedel>(unit){get_args(unit,true);};
+};
+template<int size,int sizedel>
+void DWGReverbZitaT<size,sizedel>::setcoeffs(){
+        this->fdn.setcoeffs(xover,rtlow,rtmid,fdamp,this->SR);
+}
+//len,xover,rtlow,rtmid,fdamp,doprime
+template<int size,int sizedel>
+void DWGReverbZitaT<size,sizedel>::get_args(Unit *unit,bool force)
+{
+    float lent = sc_clip(ZIN0(1),2.0,1024.0*8.0);
+	float xover_t = sc_clip(ZIN0(2),50,1500);
+	float rtlow_t = sc_clip(ZIN0(3),0.25,12);
+	float rtmid_t = sc_clip(ZIN0(4),0.25,12);
+	float fdamp_t = sc_clip(ZIN0(5),1500,24000); 
+    bool docoefs = false;
+	this->mix = this->fdn.mix= 1.0;//sc_clip(ZIN0(4),0.0,1.0);
+    this->doprime = ZIN0(6);
+	for(int i=0;i<size;i++)
+		this->factors[i] = ZIN0(7+i);
+    for(int i=0;i<size;i++)
+		this->fdn.o_perm[i] = ZIN0(7 + size + i);
+    if(lent != this->len || force){
+        this->len = lent;
+        this->setlengths();
+        docoefs = true;
+    }
+    if(docoefs || xover_t != xover || rtlow_t != rtlow || rtmid_t != rtmid || fdamp_t != fdamp || force){
+        xover = xover_t;
+        rtlow = rtlow_t;
+        rtmid = rtmid_t;
+        fdamp = fdamp_t;
+        this->setcoeffs();
+    }
+    if(force){
+        for(int i=1;i<7+2*size; i++)
+            printf("ZIN(%d) : %g\n",i,ZIN0(i)); 
+    }
+}
+//instantiations Zita8
+typedef  DWGReverbZitaT<8,1024*8> DWGReverb3Band;
+SCWrapClassT(DWGReverb3Band);
+void DWGReverb3Band_next(DWGReverb3Band  *unit, int inNumSamples)
+{
+	float *out[2];
+	out[0] = OUT(0);
+	out[1] = OUT(1);
+	float *in = IN(0);
+    unit->get_args(unit);
+
+	unit->fdn.go_st(in,out,inNumSamples);
+}
+
+////////////instantiation Zita_16
+typedef  DWGReverbZitaT<16,1024*8> DWGReverb3Band_16;
+SCWrapClassT(DWGReverb3Band_16);
+void DWGReverb3Band_16_next(DWGReverb3Band_16  *unit, int inNumSamples)
+{
+	float *out[2];
+	out[0] = OUT(0);
+	out[1] = OUT(1);
+	float *in = IN(0);
+    unit->get_args(unit);
+
+	unit->fdn.go_st(in,out,inNumSamples);
+}
+////////////////////////////////////////////EarlyRef Ugens/////////////////////////////////
 
 float dist(float im[3],float r[3]){
     float x = im[0] - r[0];
@@ -272,26 +323,217 @@ float dist(float im[3],float r[3]){
     float z = im[2] - r[2];
     return sqrt(x*x+y*y+z*z);
 }
+float dist(float im[3],float r0,float r1,float r2){
+    float x = im[0] - r0;
+    float y = im[1] - r1;
+    float z = im[2] - r2;
+    return sqrt(x*x+y*y+z*z);
+}
+////////////Kendal 1986
+//double feedback filtered comb
+template<int size>
+struct R2{
+	int M[2];
+	float p,f[2];
+	float lastout;
+	CircularBuffer2POWSizedT<size> delays[2];
+	LTITv<1,1> filters[2];
+	R2():lastout(0.0){};
+	void set_coeffs(int M1,int M2,float p_t, float f_t1,float f_t2){
+		//printf("%d, %d, %f,%f,%f\n",M1,M2,p_t,f_t1,f_t2);
+		M[0] = std::min(size,std::max(1,M1)) - 1;
+		M[1] = std::min(size,std::max(1,M2)) - 1;
+        p = std::min(1.0f,std::max(0.0f,p_t));
+		f[0] = std::min(1.0f,std::max(0.0f,f_t1));
+		f[1] = std::min(1.0f,std::max(0.0f,f_t2));
+		for(int i=0; i< 2; i++){
+			filters[i].KernelA = -p;
+			filters[i].KernelB = 1.0 - p;
+		}
+	}  
+	inline float filter(float in){
+		float odel1 = delays[0].delay(M[0])*f[0];
+		odel1 = filters[0].filter(odel1);
+		float odel2 = delays[1].delay(M[1])*f[1];
+		odel2 = filters[1].filter(odel2);
+		delays[0].push(in + odel2);
+		delays[1].push(odel1);
+		lastout = in + odel1 + odel2;
+		return lastout;
+	}
+};
 
-const int MaxNits = 2;
+struct Kendall:public Unit{
+	R2<4096*2> R2dels[18];
+	R2<4096*2> R2delsR[18];
+	float rooms[18][3] = {{0,0,1},{-1,0,0},{0,1,0},{1,0,0},{0,-1,0},{0,0,-1},
+		{-1,0,1},{0,1,1},{1,0,1},{0,-1,1},{-1,-1,0},{-1,1,0},{1,1,0},{1,-1,0},
+			{-1,0,-1},{0,1,-1},{1,0,-1},{0,-1,-1}};
+	int inputs[6][4] = {{6,8,7,9},{10,11,6,14},{11,12,7,15},{12,13,8,16},{13,10,9,17},{14,16,15,17}};//,
+		//{0,1},{0,2},{0,3},{0,4}};
+	CircularBuffer2POWSizedT<4096*8> MtapDel;
+	Kendall(Unit *unit);
+	void findDist(float room[3],float rec[2]);
+	void CalcOne(int n,float room[3]);
+	void refsCalculation();
+	void get_args(Unit *unit,bool force = false);
+	void go(float *in,float *outL, float *outR,int numsamp);
+	float L[3];
+    float Ps[3];
+    float Pr[3];
+    float Ps_[3];//center room is 0,0
+    float Pr_[3];
+
+    float B,HW,d0,p;
+
+    float SR;
+	float deldirL,deldirR,ampdirL,ampdirR;
+    float delL[18],delR[18],ampL[18],ampR[18];
+    int RefN[18];
+};
+SCWrapClass(Kendall);
+Kendall::Kendall(Unit *unit){
+
+	SR = SAMPLERATE;
+	get_args(unit,true);
+	SETCALC(Kendall_next);
+}
+
+void Kendall::findDist(float room[3],float dists[2]){
+    float u[3],res[3];
+    for(int i=0; i<3; i++){
+        u[i] = 1.0 - 2.0*float((int)room[i] & 1);
+        res[i] = u[i]*Ps_[i] + room[i]*L[i];
+    }
+	dists[0] = dist(res,Pr_[0] - HW,Pr_[1],Pr_[2]);
+	dists[1] = dist(res,Pr_[0] + HW,Pr_[1],Pr_[2]);
+}
+void Kendall::CalcOne(int n,float room[3]){
+    float r2[3],r3[3];
+    for(int i=0; i<3; i++){
+        r2[i] = room[i]*2.0;
+        r3[i] = room[i]*3.0;
+    }
+	float exp = 0.0;
+	for(int i=0; i<3; i++)
+		exp += abs(room[i]);
+	
+	float dist1[2],dist2[2],dist3[2];
+    findDist(room,dist1);
+    findDist(r2,dist2);
+    findDist(r3,dist3);
+
+	float d1 = dist2[0] - dist1[0];
+	float d2 = dist3[0] - dist2[0];
+	//printf("coeffsL %d\n",n);
+	R2dels[n].set_coeffs(SR*d1/340.0,SR*d2/340.0,p,B*dist1[0]/dist2[0],B*dist2[0]/dist3[0]);
+	d1 = dist2[1] - dist1[1];
+	d2 = dist3[1] - dist2[1];
+	//printf("coeffsR %d\n",n);
+	R2delsR[n].set_coeffs(SR*d1/340.0,SR*d2/340.0,p,B*dist1[1]/dist2[1],B*dist2[1]/dist3[1]);
+	
+	delL[n] = SR*dist1[0]/340.0;
+	ampL[n] = pow(B,exp)/dist1[0];
+	delR[n] = SR*dist1[1]/340.0;
+	ampR[n] = pow(B,exp)/dist1[1];
+}
+
+
+
+void Kendall::refsCalculation(){
+	Ps_[0] = Ps[0] - L[0]*0.5;
+    Ps_[1] = Ps[1] - L[1]*0.5;
+    Ps_[2] = Ps[2] - L[2]*0.5;
+    Pr_[0] = Pr[0] - L[0]*0.5;
+    Pr_[1] = Pr[1] - L[1]*0.5;
+    Pr_[2] = Pr[2] - L[2]*0.5;
+	deldirL = dist(Ps_,Pr_[0] - HW,Pr_[1],Pr_[2]);
+	deldirR = dist(Ps_,Pr_[0] + HW,Pr_[1],Pr_[2]);
+	ampdirL = 1.0/deldirL;
+	ampdirR = 1.0/deldirR;
+	deldirL *=SR/340.0;
+	deldirR *=SR/340.0;
+	for(int i=0; i <18; i++)
+		CalcOne(i,rooms[i]);
+	
+}
+void Kendall::go(float *in,float *outL, float *outR,int num){
+	float oo[18],ooR[18];
+	for(int i=0; i<num; i++){
+		MtapDel.push(in[i]);
+		//prepare inputs
+		for(int j=0; j <18; j++){
+			oo[j] = MtapDel.delay(delL[j])*ampL[j];
+			ooR[j] = MtapDel.delay(delR[j])*ampR[j];
+			
+			if(j < 6)
+			for(int k=0; k <4; k++){
+				oo[j] += R2dels[inputs[j][k]].lastout;
+				ooR[j] += R2delsR[inputs[j][k]].lastout;
+			}
+		}
+		//getouts
+		outL[i] = MtapDel.delay(deldirL)*ampdirL;
+		outR[i] = MtapDel.delay(deldirR)*ampdirR;
+		for(int j=0; j <18; j++){
+			outL[i] += R2dels[j].filter(oo[j]);
+			outR[i] += R2delsR[j].filter(ooR[j]);
+		}
+	}
+}
+void Kendall::get_args(Unit *unit,bool force){
+	float Pst[3],Prt[3],Lt[3],HWt,Bt,p_t;
+    int Nt;
+    Pst[0] = ZIN0(1);
+    Pst[1] = ZIN0(2);
+    Pst[2] = ZIN0(3);
+    Prt[0] = ZIN0(4);
+    Prt[1] = ZIN0(5);
+    Prt[2] = ZIN0(6);
+    Lt[0] = ZIN0(7);
+    Lt[1] = ZIN0(8);
+    Lt[2] = ZIN0(9);
+    HWt = ZIN0(10);
+    Bt = sc_clip(ZIN0(11),-1.0,1.0);
+    p_t = sc_clip(ZIN0(12),0.0,1.0);
+
+    bool changed = (Pst[0] != Ps[0] || Pst[1] != Ps[1] || Pst[2] != Ps[2] || Prt[0] != Pr[0] || Prt[1] != Pr[1] || Prt[2] != Pr[2] || Lt[0] != L[0] || Lt[1] != L[1] || Lt[2] != L[2] || HWt != HW || Bt != B || p_t != p);
+    if (changed || force) {
+        Ps[0] = Pst[0]; Ps[1] = Pst[1]; Ps[2] = Pst[2]; Pr[0] = Prt[0]; Pr[1] = Prt[1];Pr[2] = Prt[2]; L[0] = Lt[0]; L[1] = Lt[1] ; L[2] = Lt[2] ; HW = HWt ; B = Bt;p = p_t;
+        //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
+        refsCalculation();
+    }
+}
+
+void Kendall_next(Kendall *unit,int numsamples){
+	unit->get_args(unit);
+    float * outL = OUT(0);
+    float * outR = OUT(1);
+    float * in = IN(0);
+	unit->go(in,outL,outR,numsamples);
+}
+/////////////EarlyRef
+const int MaxNits = 6;
 //const int Nits = MaxNits;
 //const int Nrefs = pow((2*Nits + 1),3)*8;
 const int MaxNrefs = pow((2*MaxNits + 1),3);
 //const int Nrefs = MaxNrefs;
 struct EarlyRef:public Unit
 {
-	EarlyRef(Unit* unit);
+	Unit * unit;
+    EarlyRef(Unit* unit);
     float CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
     void refsCalculation();
     void filters_init();
+    void allpass_init();
     void filters_tick(float in);
     void filters_tickLR(float *inL,float *inR,float &outL,float &outR);
     void findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res);
-    void getargs(Unit * unit);
+    void getargs(bool force=false);
     CircularBuffer2POWSizedT<4096*16> MtapDel;
-    CircularBuffer2POWSizedT<4096*16> DelR;
-    CircularBuffer2POWSizedT<4096*16> DelL;
-    LTITv<1,1> filters[4];
+    //CircularBuffer2POWSizedT<4096*16> DelR;
+    //CircularBuffer2POWSizedT<4096*16> DelL;
+    LTITv<1,1> filters[4];//for version 2
     LTITv<1,1> filtersL[4];
     LTITv<1,1> filtersR[4];
     float filters_out[5];
@@ -300,6 +542,10 @@ struct EarlyRef:public Unit
     float Pr[3];
     float Ps_[3];//center room is 0,0
     float Pr_[3];
+    AllPass2powT<1024*2> allpassL[3];
+    AllPass2powT<1024*2> allpassR[3];
+    int allp_lens[3];
+    float allp_coef;
     float B,HW,d0,p;
     int N,Nrefs;
     float samprate;
@@ -309,33 +555,24 @@ struct EarlyRef:public Unit
 SCWrapClass(EarlyRef);
 EarlyRef::EarlyRef(Unit *unit)
 {
-    Ps[0] = ZIN0(1);
-    Ps[1] = ZIN0(2);
-    Ps[2] = ZIN0(3);
-    Pr[0] = ZIN0(4);
-    Pr[1] = ZIN0(5);
-    Pr[2] = ZIN0(6);
-    L[0] = ZIN0(7);
-    L[1] = ZIN0(8);
-    L[2] = ZIN0(9);
-    HW = ZIN0(10);
-    B = ZIN0(11);
-    N = sc_clip(ZIN0(12),0.0,(float)MaxNits);
-    Nrefs = pow((2*N + 1),3);
-    p = sc_clip(ZIN0(13),0.0,0.9);
+    this->unit = unit;
     samprate = SAMPLERATE;
-    //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
-    filters_init();
-    refsCalculation();
+    getargs(true);
     SETCALC(EarlyRef_next);
 }
 void EarlyRef::filters_init(){
-    printf("filter_init %g\n",p);
     for(int i= 0;i<4;i++){
         filtersL[i].KernelA = filtersR[i].KernelA = filters[i].KernelA = -p;
         filtersL[i].KernelB = filtersR[i].KernelB = filters[i].KernelB = 1.0 - p;
     }
 }
+void EarlyRef::allpass_init(){
+    for(int i=0;i < 3;i++){
+        allpassL[i].set_coeffs(allp_lens[i],allp_coef);
+        allpassR[i].set_coeffs(allp_lens[i],allp_coef);
+    }
+}
+
 void EarlyRef::filters_tick(float in)
 {
     filters_out[0] = in;
@@ -350,6 +587,11 @@ void EarlyRef::filters_tickLR(float *inL,float *inR,float &outL,float &outR)
     for(int i= 0;i<4;i++){
         outL = filtersL[i].filter(outL + inL[4-i]);
         outR = filtersR[i].filter(outR + inR[4-i]);
+    }
+    if(allp_coef!=0.0)
+    for(int i =0;i<3;i++){
+        outL = allpassL[i].filter(outL);
+        outR = allpassR[i].filter(outR);
     }
     outL += inL[0];
     outR += inR[0];
@@ -410,14 +652,14 @@ void EarlyRef::refsCalculation(){
                     }
             }
     }
-    printf("num is %d MaNrefs is %d Nrefs is %d\n",num,MaxNrefs,Nrefs);
+    //printf("num is %d MaNrefs is %d Nrefs is %d\n",num,MaxNrefs,Nrefs);
 }
 void EarlyRef::findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res){
     res[0] = ufx*Ps_[0] + lfx*L[0];
     res[1] = ufy*Ps_[1] + lfy*L[1];
     res[2] = ufz*Ps_[2] + lfz*L[2];
 }
-void EarlyRef::getargs(Unit *unit){
+void EarlyRef::getargs(bool force){
     float Pst[3],Prt[3],Lt[3],HWt,Bt,pt;
     int Nt;
     Pst[0] = ZIN0(1);
@@ -430,11 +672,11 @@ void EarlyRef::getargs(Unit *unit){
     Lt[1] = ZIN0(8);
     Lt[2] = ZIN0(9);
     HWt = ZIN0(10);
-    Bt = ZIN0(11);
+    Bt = sc_clip(ZIN0(11),-1.0,1.0);
     Nt = sc_clip(ZIN0(12),0.0,(float)MaxNits);
 
     bool changed = (Pst[0] != Ps[0] || Pst[1] != Ps[1] || Pst[2] != Ps[2] || Prt[0] != Pr[0] || Prt[1] != Pr[1] || Prt[2] != Pr[2] || Lt[0] != L[0] || Lt[1] != L[1] || Lt[2] != L[2] || HWt != HW || Bt != B || Nt != N);
-    if (changed) {
+    if (changed || force) {
         Ps[0] = Pst[0]; Ps[1] = Pst[1]; Ps[2] = Pst[2]; Pr[0] = Prt[0]; Pr[1] = Prt[1];Pr[2] = Prt[2]; L[0] = Lt[0]; L[1] = Lt[1] ; L[2] = Lt[2] ; HW = HWt ; B = Bt;N = Nt;
         //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
         Nrefs = pow((2*N + 1),3);
@@ -442,14 +684,21 @@ void EarlyRef::getargs(Unit *unit){
     }
     
     pt = sc_clip(ZIN0(13),0.0,0.9);
-    if(p != pt){
+    if(p != pt || force){
         p = pt;
         filters_init();
     }
+    //dont check for changes its too cheap
+    allp_lens[0] = ZIN0(14);
+    allp_lens[1] = ZIN0(15);
+    allp_lens[2] = ZIN0(16);
+    allp_coef = sc_clip(ZIN0(17),0.0,1.0);
+    allpass_init();
+
 }
 void EarlyRef_next(EarlyRef* unit,int inNumSamples)
 {
-    unit->getargs(unit);
+    unit->getargs();
     float * outL = OUT(0);
     float * outR = OUT(1);
     float * in = IN(0);
@@ -1110,10 +1359,23 @@ void EarlyRefAtkGen_next(EarlyRefAtkGen* unit,int inwrongNumSamples)
     }
 }
 PluginLoad(DWGReverb){
+    /*
+    Base<int> der;
+    der.inc();
+    der.show();
+    Base<char> derc;
+    derc.inc();
+    derc.show();
+    */
 	ft = inTable;
+    DefineDtorUnit(DWGAllpass);
+	DefineDtorUnit(Kendall);
     DefineDtorUnit(EarlyRef);
 	DefineDtorUnit(EarlyRef27);
     DefineDtorUnit(EarlyRef27Gen);
     DefineDtorUnit(EarlyRefAtkGen);
-    DefineDtorUnit(DWGReverb);
+    DefineDtorUnit(DWGReverbC1C3);
+    DefineDtorUnit(DWGReverbC1C3_16);
+    DefineDtorUnit(DWGReverb3Band);
+    DefineDtorUnit(DWGReverb3Band_16);
 }
