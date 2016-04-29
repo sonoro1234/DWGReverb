@@ -943,6 +943,8 @@ static SndBuf * GetBuffer(Unit * unit, uint32 bufnum)
 struct EarlyRef27Gen:public Unit
 {
 	EarlyRef27Gen(Unit* unit);
+	void CalcFirst();
+	float mindist;
     float CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
     void refsCalculation();
     void findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res);
@@ -991,6 +993,17 @@ inline void fracdel2(float fsample,float val,float *buf, unsigned int size){
 	buf[pos1] += val*(1.0-frac);
 	buf[pos1 + 1] += val*frac;
 }
+void EarlyRef27Gen::CalcFirst()
+{
+	float rec[3];
+    rec[0] = Pr[0] - HW;
+    rec[1] = Pr[1];
+    rec[2] = Pr[2];
+	float distL = dist(Ps,rec);
+	rec[0] = Pr[0] + HW;
+    float distR = dist(Ps,rec);
+	mindist =  std::min(distR,distL);
+}
 float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
 {
     float image[3];
@@ -1006,8 +1019,8 @@ float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx
     float preA = pow(B,exp);
     ampl = preA/(distL + 0.001);//d0*preA/(distL);
     ampr = preA/(distR + 0.001);//d0*preA/(distR);
-    dell = samprate*distL/340.0;
-    delr = samprate*distR/340.0;
+    dell = samprate*(distL-mindist)/340.0;
+    delr = samprate*(distR-mindist)/340.0;
     //printf("%g, %g, %g, %g, %g\n",d0,delL[n],delR[n],ampL[n],ampR[n]);
     /*
     if (dell < sndbufL->samples)
@@ -1032,6 +1045,7 @@ void EarlyRef27Gen::refsCalculation(){
     Clear(sndbufL->samples,sndbufL->data);
     Clear(sndbufR->samples,sndbufR->data);
     d0 = 1.0;
+	CalcFirst();
     if(N == 0){
         //printf("EarlyRef27Gen::refsCalculation\n");
         CalcOne(0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0);	
@@ -1358,6 +1372,8 @@ void EarlyRefAtkGen_next(EarlyRefAtkGen* unit,int inwrongNumSamples)
             ZOUT0(0) = 0.0;
     }
 }
+
+extern void initPartConvT(InterfaceTable *);
 PluginLoad(DWGReverb){
     /*
     Base<int> der;
@@ -1368,6 +1384,8 @@ PluginLoad(DWGReverb){
     derc.show();
     */
 	ft = inTable;
+	
+	initPartConvT(inTable);
     DefineDtorUnit(DWGAllpass);
 	DefineDtorUnit(Kendall);
     DefineDtorUnit(EarlyRef);
