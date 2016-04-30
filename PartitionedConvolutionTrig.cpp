@@ -188,7 +188,7 @@ void PartConvT_Ctor( PartConvT* unit )
 		unit->m_numamort = (unit->m_partitions-1)/unit->m_spareblocks; //will relate number of partitions to number of spare blocks
 		unit->m_lastamort= (unit->m_partitions-1)- ((unit->m_spareblocks-1)*(unit->m_numamort)); //allow for error on last one
 		unit->m_amortcount= -1; //starts as flag to avoid any amortisation before have first fft done
-		unit->m_partitionsdone=1;
+		unit->m_partitionsdone= 0;//1;
 
 		//printf("Amortisation stats partitions %d nover2 %d blocksize %d spareblocks %d numamort %d lastamort %d \n", unit->m_partitions,unit->m_nover2, unit->m_blocksize, unit->m_spareblocks, unit->m_numamort, unit->m_lastamort);
 
@@ -281,9 +281,10 @@ void PartConvT_next( PartConvT *unit, int inNumSamples )
 
 			int irpos= (i*fftsize);
 			int posnow= (accumpos+irpos)%fullsize;
+			
 			float * target= accumbuffer+posnow;
 			float * ir= irspectrum+irpos;
-
+			//printf("1 posnow: %d irpos: %d accumpos: %d\n",posnow,irpos,accumpos);
 			//real multiply for dc and nyquist
 			target[0] += ir[0]*spectrum[0];
 			target[1] += ir[1]*spectrum[1];
@@ -325,6 +326,7 @@ void PartConvT_next( PartConvT *unit, int inNumSamples )
 		//amortisation steps:
 		//complex multiply of this new fft spectrum against existing irspectrums and sum to accumbuffer
 		if (unit->m_amortcount>=0) {
+		//if(unit->m_partitionsdone>=1){
 			float * spectrum= unit->m_spectrum;
 
 			//multiply spectra and accumulate for all ir spectra across storage buffer
@@ -350,18 +352,20 @@ void PartConvT_next( PartConvT *unit, int inNumSamples )
 
 			starti= unit->m_partitionsdone;//-1;
 			stopi= starti+number-1;
-
+			//starti= 1;
+			//stopi= unit->m_partitions-1;
 			//printf("amort check count %d starti %d stopi %d number %d framesdone %d \n",unit->m_amortcount, starti, stopi, number, unit->m_partitionsdone);
 
 			unit->m_partitionsdone += number;
 			++unit->m_amortcount;
 
 			for (int i=starti; i<=stopi; ++i) {
-				int posnow= (accumpos+(i*fftsize))%fullsize;
+				int posnow= (accumpos+((i-1)*fftsize))%fullsize;
+				
 				float * target= accumbuffer+posnow;
 				int irpos= (i*fftsize);
 				float * ir= irspectrum+irpos;
-
+				//printf("posnow: %d irpos: %d accumpos: %d\n",posnow,irpos,accumpos);
 				//real multiply for dc and nyquist
 				target[0]+=  ir[0]*spectrum[0];
 				target[1]+=	 ir[1]*spectrum[1];
@@ -373,6 +377,8 @@ void PartConvT_next( PartConvT *unit, int inNumSamples )
 					target[binposi]+=  (ir[binposi]*spectrum[binposr]) + (ir[binposr]*spectrum[binposi]);
 				}
 			}
+
+			//unit->m_partitionsdone = 0;
 		}
 	}
 
