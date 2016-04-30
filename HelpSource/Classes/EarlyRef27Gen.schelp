@@ -35,6 +35,8 @@ Reflection coefficient for the room's floor, walls, and ceiling.
 ARGUMENT:: n
 Controls the number of mirror images to model. n = 0 generates 27 mirror images, and n = 1 to 5 generates 8*(N*2+1)^3 mirror images.
 
+ARGUMENT:: hangle
+Head angle in radians. 0 is front, -pi/2 is left, pi/2 is right.
 
 EXAMPLES::
 

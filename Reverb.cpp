@@ -952,7 +952,8 @@ struct EarlyRef27Gen:public Unit
 	float L[3];
     float Ps[3];
     float Pr[3];
-    float B,HW,d0;
+	float EarL[3],EarR[3];
+    float B,HW,d0,Hangle;
     int N;
     float samprate;
     float bufnumL,bufnumR;
@@ -995,13 +996,16 @@ inline void fracdel2(float fsample,float val,float *buf, unsigned int size){
 }
 void EarlyRef27Gen::CalcFirst()
 {
-	float rec[3];
-    rec[0] = Pr[0] - HW;
-    rec[1] = Pr[1];
-    rec[2] = Pr[2];
-	float distL = dist(Ps,rec);
-	rec[0] = Pr[0] + HW;
-    float distR = dist(Ps,rec);
+	float sinHW = sin(Hangle)*HW;
+	float cosHW = cos(Hangle)*HW;
+    EarL[0] = Pr[0] - cosHW;
+    EarL[1] = Pr[1] + sinHW;
+    EarL[2] = Pr[2];
+	float distL = dist(Ps,EarL);
+	EarR[0] = Pr[0] + cosHW;
+    EarR[1] = Pr[1] - sinHW;
+    EarR[2] = Pr[2];
+    float distR = dist(Ps,EarR);
 	mindist =  std::min(distR,distL);
 }
 float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
@@ -1009,13 +1013,9 @@ float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx
     float image[3];
     float dell,delr,ampl,ampr;
     findImage(ux,uy,uz,lx,ly,lz,image);
-    float rec[3];
-    rec[0] = Pr[0] - HW;
-    rec[1] = Pr[1];
-    rec[2] = Pr[2];
-    float distL = dist(image,rec);
-    rec[0] = Pr[0] + HW;
-    float distR = dist(image,rec);
+
+    float distL = dist(image,EarL);
+    float distR = dist(image,EarR);
     float preA = pow(B,exp);
     ampl = preA/(distL + 0.001);//d0*preA/(distL);
     ampr = preA/(distR + 0.001);//d0*preA/(distR);
@@ -1118,10 +1118,11 @@ bool EarlyRef27Gen::getargs(Unit *unit,bool force){
     Ntf = ZIN0(ins++);
     Ntf = sc_clip(Ntf,0.0f,5.0f);//if done above dont works!!
     Nt = Ntf;
-    bool changed = (Pst[0] != Ps[0] || Pst[1] != Ps[1] || Pst[2] != Ps[2] || Prt[0] != Pr[0] || Prt[1] != Pr[1] || Prt[2] != Pr[2] || Lt[0] != L[0] || Lt[1] != L[1] || Lt[2] != L[2] || HWt != HW || Bt != B || Nt != N);
+	float Hangle_t = ZIN0(ins++);
+    bool changed = (Pst[0] != Ps[0] || Pst[1] != Ps[1] || Pst[2] != Ps[2] || Prt[0] != Pr[0] || Prt[1] != Pr[1] || Prt[2] != Pr[2] || Lt[0] != L[0] || Lt[1] != L[1] || Lt[2] != L[2] || HWt != HW || Bt != B || Nt != N || Hangle_t!= Hangle);
     if (changed || force) {
         //printf("Nt %d %f \n",Nt,Ntf);
-        Ps[0] = Pst[0]; Ps[1] = Pst[1]; Ps[2] = Pst[2]; Pr[0] = Prt[0]; Pr[1] = Prt[1];Pr[2] = Prt[2]; L[0] = Lt[0]; L[1] = Lt[1] ; L[2] = Lt[2] ; HW = HWt ; B = Bt; N = Nt;
+        Ps[0] = Pst[0]; Ps[1] = Pst[1]; Ps[2] = Pst[2]; Pr[0] = Prt[0]; Pr[1] = Prt[1];Pr[2] = Prt[2]; L[0] = Lt[0]; L[1] = Lt[1] ; L[2] = Lt[2] ; HW = HWt ; B = Bt; N = Nt; Hangle = Hangle_t;
         //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
         refsCalculation();
     }

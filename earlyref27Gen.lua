@@ -10,10 +10,10 @@
 --N: value 0 generates 27 mirror images, 1 to 5 generates 8*(N*2+1)^3 mirror images
 
 EarlyRef27Gen = UGen:new{name='EarlyRef27Gen'}
-function EarlyRef27Gen.kr(bufL,bufR,Ps,Pr,L,HW,B,N)
+function EarlyRef27Gen.kr(bufL,bufR,Ps,Pr,L,HW,B,N,Hangle)
 	bufL = bufL or 0;bufR = bufR or 0
-	Ps = Ps or {0,0,0};Pr = Pr or {0,0,0};L = L or {1,1,1};HW = HW or 0.2;B= B or 0.97;N = N or 0
-	return EarlyRef27Gen:MultiNew(concatTables({1,bufL,bufR},Ps,Pr,L,{HW,B,N}))
+	Ps = Ps or {0,0,0};Pr = Pr or {0,0,0};L = L or {1,1,1};HW = HW or 0.2;B= B or 0.97;N = N or 0; Hangle = Hangle or 0
+	return EarlyRef27Gen:MultiNew(concatTables({1,bufL,bufR},Ps,Pr,L,{HW,B,N,Hangle}))
 end
 
 --late reverb stereo FDN8
@@ -35,7 +35,7 @@ end
 --buffer must be power of two for Convolution2
 --choose size according to generated RIR
 Nbuf = 2048*4
-SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,1.2},Pr = Ref{3,3,1.2},B=0.74,HW=0.4,N = 3,revl=1,c1=8,c3=10,bypass=0},function()
+SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,1.2},Pr = Ref{3,3,1.2},B=0.74,HW=0.4,N = 3,revl=1,c1=8,c3=10,Hangle=0,bypass=0},function()
 
 	local input = Impulse.ar(2)
 	input = HPF.ar(LPF.ar(input,3000),200) *3
@@ -46,7 +46,7 @@ SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,
 
 	local bL = LocalBuf(Nbuf)
 	local bR = LocalBuf(Nbuf)
-	local trig = EarlyRef27Gen.kr(bL,bR,Ps,Pr,L,HW,-B,N)
+	local trig = EarlyRef27Gen.kr(bL,bR,Ps,Pr,L,HW,-B,N,Hangle*math.pi)
 	local sigL = Convolution2.ar(input,bL,trig,Nbuf)
 	local sigR = Convolution2.ar(input,bR,trig,Nbuf)
 	local early = {sigL,sigR}

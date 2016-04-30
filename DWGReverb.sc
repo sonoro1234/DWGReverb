@@ -1,10 +1,10 @@
 EarlyRef27Gen : UGen {
 
-    *kr { arg bufL = 0, bufR = 0, source = [0,0,0], receiver = [0,0,0], roomsize = [1,1,1], hw = 0.2, b = 0.97, n = 0;
+    *kr { arg bufL = 0, bufR = 0, source = [0,0,0], receiver = [0,0,0], roomsize = [1,1,1], hw = 0.2, b = 0.97, n = 0, hangle=0 ;
         (source.size == 3).not.if { ^Error("Length of source in EarlyRef27Gen must be 3").throw; };
         (receiver.size == 3).not.if { ^Error("Length of receiver in EarlyRef27Gen must be 3").throw; };
         (roomsize.size == 3).not.if { ^Error("Length of roomsize in EarlyRef27Gen must be 3").throw; };
-        ^this.multiNewList(['control', bufL, bufR] ++ source ++ receiver ++ roomsize ++ [hw, b, n]);
+        ^this.multiNewList(['control', bufL, bufR] ++ source ++ receiver ++ roomsize ++ [hw, b, n, hangle]);
     }
 
 }

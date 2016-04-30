@@ -29,7 +29,7 @@
 
 static SndBuf * GetBufferN(Unit * unit, uint32 bufnum, const char * ugenName)
 {
-	printf("GetBufferN\n");
+	//printf("GetBufferN\n");
 	SndBuf *buf;
 	World *world = unit->mWorld;
 
@@ -348,7 +348,7 @@ void PartConvT_next( PartConvT *unit, int inNumSamples )
 				number= unit->m_numamort;
 			}
 
-			starti= unit->m_partitionsdone-1;
+			starti= unit->m_partitionsdone;//-1;
 			stopi= starti+number-1;
 
 			//printf("amort check count %d starti %d stopi %d number %d framesdone %d \n",unit->m_amortcount, starti, stopi, number, unit->m_partitionsdone);
@@ -394,7 +394,7 @@ void PartConvT_next( PartConvT *unit, int inNumSamples )
 
 void DoPreparePartConvT(World *world, float *data1, SndBuf* frombuf,int fftsize )
 {
-	printf("DoPreparePartConvT fftsize: %d\n",fftsize);
+	//printf("DoPreparePartConvT fftsize: %d\n",fftsize);
 	int frames2 = frombuf->frames;
 	float *data2 = frombuf->data;
 
