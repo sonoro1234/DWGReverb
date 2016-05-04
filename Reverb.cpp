@@ -945,7 +945,7 @@ struct EarlyRef27Gen:public Unit
 	EarlyRef27Gen(Unit* unit);
 	void CalcFirst();
 	float mindist;
-    float CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
+    void CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
     void refsCalculation();
     void findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res);
     bool getargs(Unit * unit, bool force=false);
@@ -1008,7 +1008,7 @@ void EarlyRef27Gen::CalcFirst()
     float distR = dist(Ps,EarR);
 	mindist =  std::min(distR,distL);
 }
-float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
+void EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
 {
     float image[3];
     float dell,delr,ampl,ampr;
@@ -1030,7 +1030,7 @@ float EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx
     */
     fracdel2(dell,ampl,sndbufL->data,sndbufL->frames);
     fracdel2(delr,ampr,sndbufR->data,sndbufR->frames);
-    return distL;
+
 }
 /*
 void EarlyRef27Gen::predist(u,v,w,l,m,n,L,Ps){
