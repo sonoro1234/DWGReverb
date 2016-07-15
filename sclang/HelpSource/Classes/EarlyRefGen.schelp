@@ -1,4 +1,4 @@
-TITLE:: EarlyRef27Gen
+TITLE:: EarlyRefGen
 summary:: Early reflections generator
 categories:: UGens>Reverbs
 related:: Classes/DWGReverbC1C3, Classes/EarlyRefAtkGen, Classes/GVerb
@@ -12,7 +12,7 @@ CLASSMETHODS::
 METHOD:: kr
 
 ARGUMENT:: bufL
-Left buffer. Both buffers should have the same size, and that size should be a power of 2 for use in link::Classes/Convolution2::.
+Left buffer. Both buffers should have the same size, and that size should be a power of 2 for use in link::Classes/PartConvT::.
 
 ARGUMENT:: bufR
 Right buffer.

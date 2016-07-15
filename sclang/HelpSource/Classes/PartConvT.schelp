@@ -1,0 +1,32 @@
+class:: PartConvT
+summary:: Real-time partitioned convolution
+categories:: UGens>FFT, UGens>Convolution
+related:: Classes/Convolution, Classes/Convolution2, Classes/Convolution2L, Classes/Convolution3
+
+description::
+
+Low latency convolution. Similar to PartConv but without buffer preparation. When buffer is changed it can be updated with trig.
+
+Mono impulse response only! If inputting multiple channels, you'll need independent PartConvs, one for each channel.
+
+But the charm is: impulse response can be as large as you like (CPU load increases with IR size. Various tradeoffs based on fftsize choice, due to rarer but larger FFTs. This plug-in uses amortisation to spread processing and avoid spikes).
+
+
+classmethods::
+method:: ar
+
+argument:: in
+processing target.
+
+argument:: fftsize
+spectral convolution partition size (twice partition size). You must ensure that the blocksize divides the partition size and there are at least two blocks per partition (to allow for amortisation).
+
+argument:: irbufnum
+buffer with the inpulse response.
+
+argument:: trig
+tells plugin that irbufnum contents have been updated
+
+examples::
+See link::Classes/DWGReverbC1C3:: for a full example.
+

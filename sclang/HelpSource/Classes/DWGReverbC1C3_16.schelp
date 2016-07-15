@@ -1,0 +1,65 @@
+TITLE:: DWGReverbC1C3_16
+summary:: Digital waveguide reverberator
+categories:: UGens>Reverbs
+related:: Classes/DWGReverbC1C3, Classes/DWGReverb3Band, Classes/DWGReverb3Band_16,Classes/EarlyRefGen, Classes/EarlyRefAtkGen, Classes/GVerb
+
+DESCRIPTION::
+
+The same as DWGReverbC1C3 but with 16 feedback delays instead of 8 (best reverb coloration for short lengths)
+A mono-to-stereo reverb that models late reflections using a feedback delay network. Use in combination with link::Classes/EarlyRefGen:: or link::Classes/EarlyRefAtkGen:: for best results.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: in
+Mono input.
+
+ARGUMENT:: len
+Max size of the delay lines.
+
+ARGUMENT:: c1
+Inverse of decay time.
+
+ARGUMENT:: c3
+Inverse of height frequency decay time.
+
+ARGUMENT:: mix
+Wet and dry mix factor
+
+ARGUMENT:: coefs
+size len factor for every delay line
+
+ARGUMENT:: perm
+permutation matrix for the feedback delay
+
+ARGUMENT:: doprime
+
+
+EXAMPLES::
+
+code::
+(
+~nbuf = 2048*4;
+SynthDef(\testearly,{
+    |out = 0, len = 2000, roomsize = #[6.2,8,2.7], source = #[2,3.1,1.2], receiver = #[3,3,1.2], b = 0.74, hw = 0.4, n = 3, revl = 1, c1 = 8, c3 = 10, bypass = 0|
+    var in, bufL, bufR, trig, sigL, sigR, early, sig;
+    in = Impulse.ar(2);
+    in = HPF.ar(LPF.ar(in, 3000), 200) * 3;
+    in = LeakDC.ar(in);
+    source[0] = SinOsc.kr(0.1).range(2, 4);
+
+    bufL = LocalBuf(~nbuf);
+    bufR = LocalBuf(~nbuf);
+    trig = EarlyRefGen.kr(bufL, bufR, source, receiver, roomsize, hw, b.neg, n);
+    sigL = PartConvT.ar(in, 2048, bufL, trig);
+    sigR = PartConvT.ar(in, 2048, bufR, trig);
+    early = [sigL, sigR];
+    sig = DWGReverbC1C3_16.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
+    sig = Select.ar(bypass, [sig, in]);
+    Out.ar(out, sig);
+}).add;
+)
+
+Synth(\testearly);
+::

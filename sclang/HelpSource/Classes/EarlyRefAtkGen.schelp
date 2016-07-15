@@ -15,7 +15,7 @@ ARGUMENT:: bufW
 ARGUMENT:: bufX
 ARGUMENT:: bufY
 ARGUMENT:: bufZ
-Buffers to which the kernels will be written. All buffers should have the same size, and that size should be a power of 2 for use in link::Classes/Convolution2::.
+Buffers to which the kernels will be written. All buffers should have the same size, and that size should be a power of 2 for use in link::Classes/PartConvT::.
 
 ARGUMENT:: source
 The x-, y-, and z-coordinates of the source audio in meters.

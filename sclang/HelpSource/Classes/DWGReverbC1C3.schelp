@@ -1,11 +1,11 @@
 TITLE:: DWGReverbC1C3
 summary:: Digital waveguide reverberator
 categories:: UGens>Reverbs
-related:: Classes/EarlyRef27Gen, Classes/EarlyRefAtkGen, Classes/GVerb
+related:: Classes/DWGReverbC1C3_16, Classes/DWGReverb3Band, Classes/DWGReverb3Band_16, Classes/EarlyRefGen, Classes/EarlyRefAtkGen, Classes/GVerb
 
 DESCRIPTION::
 
-A mono-to-stereo reverb that models late reflections using a feedback delay network. Use in combination with link::Classes/EarlyRef27Gen:: or link::Classes/EarlyRefAtkGen:: for best results.
+A mono-to-stereo reverb that models late reflections using a feedback delay network. Use in combination with link::Classes/EarlyRefGen:: or link::Classes/EarlyRefAtkGen:: for best results.
 
 CLASSMETHODS::
 
@@ -24,8 +24,13 @@ ARGUMENT:: c3
 Inverse of height frequency decay time.
 
 ARGUMENT:: mix
+Wet and dry mix factor
 
 ARGUMENT:: coefs
+size len factor for every delay line
+
+ARGUMENT:: perm
+permutation matrix for the feedback delay
 
 ARGUMENT:: doprime
 
@@ -45,9 +50,9 @@ SynthDef(\testearly,{
 
     bufL = LocalBuf(~nbuf);
     bufR = LocalBuf(~nbuf);
-    trig = EarlyRef27Gen.kr(bufL, bufR, source, receiver, roomsize, hw, b.neg, n);
-    sigL = Convolution2.ar(in, bufL, trig, ~nbuf);
-    sigR = Convolution2.ar(in, bufR, trig, ~nbuf);
+    trig = EarlyRefGen.kr(bufL, bufR, source, receiver, roomsize, hw, b.neg, n);
+    sigL = PartConvT.ar(in, 2048, bufL, trig);
+    sigR = PartConvT.ar(in, 2048, bufR, trig);
     early = [sigL, sigR];
     sig = DWGReverbC1C3.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
     sig = Select.ar(bypass, [sig, in]);
