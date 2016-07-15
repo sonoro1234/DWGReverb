@@ -283,10 +283,11 @@ void DWGReverbZitaT<size,sizedel>::get_args(Unit *unit,bool force)
         fdamp = fdamp_t;
         this->setcoeffs();
     }
+	/*
     if(force){
         for(int i=1;i<7+2*size; i++)
             printf("ZIN(%d) : %g\n",i,ZIN0(i)); 
-    }
+    }*/
 }
 //instantiations Zita8
 typedef  DWGReverbZitaT<8,1024*8> DWGReverb3Band;
@@ -940,9 +941,9 @@ static SndBuf * GetBuffer(Unit * unit, uint32 bufnum)
 	return buf;
 
 }
-struct EarlyRef27Gen:public Unit
+struct EarlyRefGen:public Unit
 {
-	EarlyRef27Gen(Unit* unit);
+	EarlyRefGen(Unit* unit);
 	void CalcFirst();
 	float mindist;
     void CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz);
@@ -961,8 +962,8 @@ struct EarlyRef27Gen:public Unit
     SndBuf *sndbufL, *sndbufR;
     unsigned int framesize,framesize_1, m_pos;
 };
-SCWrapClass(EarlyRef27Gen);
-EarlyRef27Gen::EarlyRef27Gen(Unit *unit)
+SCWrapClass(EarlyRefGen);
+EarlyRefGen::EarlyRefGen(Unit *unit)
 {
     int ins = 0;
     bufnumL = IN0(ins++);
@@ -984,7 +985,7 @@ EarlyRef27Gen::EarlyRef27Gen(Unit *unit)
     //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
     //refsCalculation();
     ZOUT0(0) = 0.0;
-    SETCALC(EarlyRef27Gen_next);
+    SETCALC(EarlyRefGen_next);
 }
 inline void fracdel2(float fsample,float val,float *buf, unsigned int size){
     if(fsample >=size)
@@ -994,7 +995,7 @@ inline void fracdel2(float fsample,float val,float *buf, unsigned int size){
 	buf[pos1] += val*(1.0-frac);
 	buf[pos1 + 1] += val*frac;
 }
-void EarlyRef27Gen::CalcFirst()
+void EarlyRefGen::CalcFirst()
 {
 	float sinHW = sin(Hangle)*HW;
 	float cosHW = cos(Hangle)*HW;
@@ -1008,7 +1009,7 @@ void EarlyRef27Gen::CalcFirst()
     float distR = dist(Ps,EarR);
 	mindist =  std::min(distR,distL);
 }
-void EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
+void EarlyRefGen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
 {
     float image[3];
     float dell,delr,ampl,ampr;
@@ -1033,21 +1034,21 @@ void EarlyRef27Gen::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,
 
 }
 /*
-void EarlyRef27Gen::predist(u,v,w,l,m,n,L,Ps){
+void EarlyRefGen::predist(u,v,w,l,m,n,L,Ps){
 	local x = (2*u-1)*Ps[1] - 2*l*L[1] 
 	local y = (2*v-1)*Ps[2] - 2*m*L[2] 
 	local z = (2*w-1)*Ps[3] - 2*n*L[3]
 	return {x,y,z},-TA{2*u-1,2*v-1,2*w-1},-TA{-2*l,-2*m,-2*n}
 }
 */
-void EarlyRef27Gen::refsCalculation(){
+void EarlyRefGen::refsCalculation(){
     
     Clear(sndbufL->samples,sndbufL->data);
     Clear(sndbufR->samples,sndbufR->data);
     d0 = 1.0;
 	CalcFirst();
     if(N == 0){
-        //printf("EarlyRef27Gen::refsCalculation\n");
+        //printf("EarlyRefGen::refsCalculation\n");
         CalcOne(0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0);	
         CalcOne(1, 1.0, 1.0, 1.0,-1.0, 0.0, 0.0, 0.0);	
         CalcOne(2, 1.0, 1.0,-1.0, 1.0, 0.0, 0.0, 0.0);	
@@ -1076,7 +1077,7 @@ void EarlyRef27Gen::refsCalculation(){
         CalcOne(25, 3.0,-1.0,-1.0,-1.0, 2.0, 2.0, 0.0);	
         CalcOne(26, 3.0,-1.0,-1.0,-1.0, 2.0, 2.0, 2.0);	
     }else{
-        //printf("EarlyRef27Gen::refsCalculation N:%d\n",N);
+        //printf("EarlyRefGen::refsCalculation N:%d\n",N);
         for(int l = -N;l <=N;l++)
             for(int m = -N;m <=N;m++)
                 for(int n = -N;n <=N;n++)
@@ -1094,12 +1095,12 @@ void EarlyRef27Gen::refsCalculation(){
                             }
     }
 }
-void EarlyRef27Gen::findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res){
+void EarlyRefGen::findImage(float ufx,float ufy,float ufz,float lfx,float lfy,float lfz,float * res){
     res[0] = ufx*Ps[0] + lfx*L[0];
     res[1] = ufy*Ps[1] + lfy*L[1];
     res[2] = ufz*Ps[2] + lfz*L[2];
 }
-bool EarlyRef27Gen::getargs(Unit *unit,bool force){
+bool EarlyRefGen::getargs(Unit *unit,bool force){
     float Pst[3],Prt[3],Lt[3],HWt,Bt;
     int Nt;
     float Ntf;
@@ -1128,7 +1129,7 @@ bool EarlyRef27Gen::getargs(Unit *unit,bool force){
     }
     return changed;
 }
-void EarlyRef27Gen_next(EarlyRef27Gen* unit,int inwrongNumSamples)
+void EarlyRefGen_next(EarlyRefGen* unit,int inwrongNumSamples)
 {
     int numSamples = unit->mWorld->mFullRate.mBufLength;
     unit->m_pos += numSamples;
@@ -1391,7 +1392,7 @@ PluginLoad(DWGReverb){
 	DefineDtorUnit(Kendall);
     DefineDtorUnit(EarlyRef);
 	DefineDtorUnit(EarlyRef27);
-    DefineDtorUnit(EarlyRef27Gen);
+    DefineDtorUnit(EarlyRefGen);
     DefineDtorUnit(EarlyRefAtkGen);
     DefineDtorUnit(DWGReverbC1C3);
     DefineDtorUnit(DWGReverbC1C3_16);
