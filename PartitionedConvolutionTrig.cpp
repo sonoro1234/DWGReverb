@@ -198,7 +198,7 @@ void PartConvT_Ctor( PartConvT* unit )
 
 		SETCALC(PartConvT_next);
 	}
-	
+	ZOUT0(0) = 0;
 	unit->m_prevtrig = 0.0;
 }
 

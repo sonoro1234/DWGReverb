@@ -19,10 +19,10 @@ struct DWGAllpass : public Unit
     DWGAllpass(Unit *unit);
 };
 
-SCWrapClass(DWGAllpass);
+SCWrapClassT(DWGAllpass);
 
 DWGAllpass::DWGAllpass(Unit *unit){
-    SETCALC(DWGAllpass_next);
+    //SETCALC(DWGAllpass_next);
 }
 
 void DWGAllpass_next(DWGAllpass *unit,int numsamples)
@@ -392,12 +392,12 @@ struct Kendall:public Unit{
     float delL[18],delR[18],ampL[18],ampR[18];
     int RefN[18];
 };
-SCWrapClass(Kendall);
+SCWrapClassT(Kendall);
 Kendall::Kendall(Unit *unit){
 
 	SR = SAMPLERATE;
 	get_args(unit,true);
-	SETCALC(Kendall_next);
+	//SETCALC(Kendall_next);
 }
 
 void Kendall::findDist(float room[3],float dists[2]){
@@ -553,13 +553,13 @@ struct EarlyRef:public Unit
     float delL[MaxNrefs],delR[MaxNrefs],ampL[MaxNrefs],ampR[MaxNrefs];
     int RefN[MaxNrefs];
 };
-SCWrapClass(EarlyRef);
+SCWrapClassT(EarlyRef);
 EarlyRef::EarlyRef(Unit *unit)
 {
     this->unit = unit;
     samprate = SAMPLERATE;
     getargs(true);
-    SETCALC(EarlyRef_next);
+   // SETCALC(EarlyRef_next);
 }
 void EarlyRef::filters_init(){
     for(int i= 0;i<4;i++){
@@ -797,7 +797,7 @@ struct EarlyRef27:public Unit
     float samprate;
     float delL[27],delR[27],ampL[27],ampR[27];
 };
-SCWrapClass(EarlyRef27);
+SCWrapClassT(EarlyRef27);
 EarlyRef27::EarlyRef27(Unit *unit)
 {
     Ps[0] = ZIN0(1);
@@ -814,7 +814,7 @@ EarlyRef27::EarlyRef27(Unit *unit)
     samprate = SAMPLERATE;
     //printf("%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g\n",Ps[0],Ps[1],Ps[2],Pr[0],Pr[1],Pr[2],L[0],L[1],L[2],HW,B);
     refsCalculation();
-    SETCALC(EarlyRef27_next);
+    //SETCALC(EarlyRef27_next);
 }
 float EarlyRef27::CalcOne(int n,float exp,float ux,float uy,float uz,float lx,float ly,float lz)
 {
@@ -973,8 +973,10 @@ EarlyRefGen::EarlyRefGen(Unit *unit)
     sndbufL = GetBuffer(unit,bufnumL);
     sndbufR = GetBuffer(unit,bufnumR);
     if (!sndbufL || !sndbufR){
+		Print("EarlyRefGen cant allocate buffers.\n");
         SETCALC(*ClearUnitOutputs);
         unit->mDone = true;
+		return;
     }
     Clear(sndbufL->samples, sndbufL->data);
     Clear(sndbufR->samples, sndbufR->data);
@@ -1184,8 +1186,10 @@ EarlyRefAtkGen::EarlyRefAtkGen(Unit *unit)
     sndbufY = GetBuffer(unit,bufnumY);
     sndbufZ = GetBuffer(unit,bufnumZ);
     if (!sndbufW || !sndbufX || !sndbufY || !sndbufZ){
+		Print("EarlyRefAtkGen cant allocate buffers.\n");
         SETCALC(*ClearUnitOutputs);
         unit->mDone = true;
+		return;
     }
     Clear(sndbufW->samples, sndbufW->data);
     Clear(sndbufX->samples, sndbufX->data);
