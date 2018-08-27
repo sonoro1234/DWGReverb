@@ -1393,7 +1393,7 @@ class TUBE{
         if(a1 < 1e-18)
             loss = 0.0;
         else
-            loss = 1.0 - std::min(lossF/sqrt(a1),1.0f);
+            loss = 1.0 - std::min(lossF/sqrt(a1),1.0);
 
     }
     void go(){
