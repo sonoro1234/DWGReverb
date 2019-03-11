@@ -22,7 +22,7 @@
 #include "SC_PlugIn.h"
 extern  InterfaceTable *ft;
 #include <float.h>
-#include <math.h>   
+#include <math.h>
 #ifndef M_PI
 #define M_PI           3.14159265358979323846
 #endif
@@ -53,7 +53,7 @@ void volcar(const char *_Message, const char *_File, unsigned _Line);
 #define b2(x)   (   (x) | (   (x) >> 1) )
 #define b4(x)   ( b2(x) | ( b2(x) >> 2) )
 #define b8(x)   ( b4(x) | ( b4(x) >> 4) )
-#define b16(x)  ( b8(x) | ( b8(x) >> 8) )  
+#define b16(x)  ( b8(x) | ( b8(x) >> 8) )
 #define b32(x)  (b16(x) | (b16(x) >>16) )
 #define next_power_of_2(x)      (b32(x-1) + 1)
 
@@ -84,6 +84,7 @@ inline bool approximatelyEqual(float a, float b, float epsilon = 1e-7f)
 float PhaseDelay(float f,float* B,int sizeB,float* A,int sizeA,float FS);
 float PhaseDelayDerive(float omega,float* B,int sizeB,float* A,int sizeA,float delta=0.0005);
 float groupdelay(float f,float *B,int sizeB,float *A,int sizeA,float FS);
+float PhaseIIR(float omega,float* B,int sizeB,float* A,int sizeA);
 long Nchoose(long n, long k);
 float ValimakiDispersion(float B, float f, int M);
 void kill_denormals(float &val);
@@ -450,7 +451,7 @@ class ConvolverT
 			sum += Kernel[howmany + i]*buf.Buffer[i];
 		return sum;
 	}
-	
+
 };
 
 /////////////
@@ -502,6 +503,17 @@ class LTIT
 	}
 	float groupdelay(float f,float FS){
 		return ::groupdelay(f,KernelB,kernel_sizeB,KernelA,kernel_sizeA,FS);
+	}
+	float phasedelay(float f,float FS){
+		//return ::PhaseDelay(f,KernelB,kernel_sizeB,KernelA,kernel_sizeA,FS);
+		float grpdel = groupdelay(f,FS);
+		float omega = 2.0*M_PI*f/FS;
+		float phdel = grpdel - omega*::PhaseDelayDerive(omega,KernelB,kernel_sizeB,KernelA,kernel_sizeA);
+		return phdel;
+	}
+	float phase(float f,float FS){
+		float omega = 2.0*M_PI*f/FS;
+		return PhaseIIR(omega,KernelB,kernel_sizeB,KernelA,kernel_sizeA);
 	}
 };
 
@@ -559,7 +571,7 @@ class LTITv
 			sum -= KernelA[i]*cbufout.Buffer[pAl2 + i];
 		for(int i=0; i < pAl2; i++)
 			sum -= KernelA[howmany + i]*cbufout.Buffer[i];
-			
+
 		//sum = zapgremlins(sum);
 		cbufout.push(sum);
 		return sum;
@@ -715,6 +727,103 @@ struct CircularBuffer : public CircularBufferBase
 	float delay(int pos);
 };
 
+template<typename T=float>
+struct LTIvT
+{
+	public:
+	Unit *unit;
+	T *KernelB;
+	T *KernelA;
+	int kernel_sizeB;
+	int kernel_sizeA;
+	
+	CircularBuffer cbuf;
+	CircularBuffer cbufout;
+
+	LTIvT(Unit* unit,int sizeB,int sizeA):cbuf(unit,sizeB),cbufout(unit,sizeA){
+		//Print("LTIv construct\n");
+		// for(int i=0;i<sizeB-1;i++){
+			// Print("KernelB %d %g\n",i,KernelB[i]);
+		// }
+		this->unit = unit;
+		kernel_sizeB = sizeB;
+		kernel_sizeA = sizeA;
+		KernelB = (T *)RTAlloc(unit->mWorld,sizeof(T)*sizeB);
+		KernelA = (T *)RTAlloc(unit->mWorld,sizeof(T)*sizeA);
+	};
+	~LTIvT(){
+		RTFree(unit->mWorld,KernelB);
+		RTFree(unit->mWorld,KernelA);
+	};
+
+	void* operator new(size_t sz, Unit* unit) {
+		//Print("LTIv new\n");
+		return RTAlloc(unit->mWorld, sizeof(LTIvT));
+	}
+	void operator delete(void* pObject) {
+		//Print("LTIv delete\n");
+		LTIvT * obj = (LTIvT*)pObject;
+		RTFree(obj->unit->mWorld, pObject);
+	}
+	
+	void push(T a){
+		cbuf.push(a);
+	}
+	void setKernel(T KB[],T KA[]){
+		for(int i=0;i<kernel_sizeB;i++)
+			KernelB[i] = KB[i];
+		for(int i=0;i<kernel_sizeA;i++)
+			KernelA[i] = KA[i];
+	}
+	void setKernelB(T val,int i){
+		assertv2(i<kernel_sizeB,"bigger than kernelB");
+		KernelB[i] = val;
+	}
+	void setKernelA(T val,int i){
+		assertv2(i<kernel_sizeA,"bigger than kernelA");
+		KernelA[i] = val;
+	}
+	T pushConvol(T a){
+		push(a);
+		return Convol();
+	}
+	T filter(T a){
+		push(a);
+		return Convol();
+	}
+	T Convol()
+	{
+		T sum=0.;
+		//get oldest sample from buffer
+		int pAl2 = cbuf.pointer ;
+		//pAl2 = pAl2%kernel_sizeB;
+		//if(pAl2 >= kernel_sizeB) {pAl2 = 0;}
+
+		int howmany = kernel_sizeB - pAl2;
+		for(int i=0; i < howmany; i++)
+			sum += KernelB[i]*cbuf.Buffer[pAl2 + i];
+		for(int i=0; i < pAl2; i++)
+			sum += KernelB[howmany + i]*cbuf.Buffer[i];
+
+		pAl2 = cbufout.pointer ;
+		//pAl2 = pAl2%kernel_sizeA;
+		//if(pAl2 >= kernel_sizeA) {pAl2 = 0;}
+		howmany = kernel_sizeA - pAl2;
+		for(int i=0; i < howmany; i++)
+			sum -= KernelA[i]*cbufout.Buffer[pAl2 + i];
+		for(int i=0; i < pAl2; i++)
+			sum -= KernelA[howmany + i]*cbufout.Buffer[i];
+			
+		//sum = zapgremlins(sum);
+		kill_denormals(sum);
+		cbufout.push(sum);
+		return sum;
+	}
+	T groupdelay(T f,T FS){
+		return ::groupdelay(f,KernelB,kernel_sizeB,KernelA,kernel_sizeA,FS);
+	}
+};
+
 struct LTIv
 {
 	public:
@@ -723,7 +832,7 @@ struct LTIv
 	float *KernelA;
 	int kernel_sizeB;
 	int kernel_sizeA;
-	
+
 	CircularBuffer cbuf;
 	CircularBuffer cbufout;
 
@@ -752,7 +861,7 @@ struct LTIv
 		LTIv * obj = (LTIv*)pObject;
 		RTFree(obj->unit->mWorld, pObject);
 	}
-	
+
 	void push(float a){
 		cbuf.push(a);
 	}
@@ -800,7 +909,7 @@ struct LTIv
 			sum -= KernelA[i]*cbufout.Buffer[pAl2 + i];
 		for(int i=0; i < pAl2; i++)
 			sum -= KernelA[howmany + i]*cbufout.Buffer[i];
-			
+
 		//sum = zapgremlins(sum);
 		cbufout.push(sum);
 		return sum;
@@ -846,9 +955,9 @@ struct Thirian:public LTIv
 					ak /= ((double)D-(double)(N-k-n));
 				}
 				*/
-				for(int n=0;n<k;n++) 
+				for(int n=0;n<k;n++)
 					ak *= ((double)D-(double)(N-n));
-				for(int i=0;i<k;i++) 
+				for(int i=0;i<k;i++)
 					ak /= ((double)D-(double)(-k+i));
 				this->KernelA[k-1] = (float)ak;
 				this->KernelB[N-k] = (float)ak;
@@ -876,10 +985,10 @@ struct Biquad : public LTITv<3,2>
 		float a2 = a*a;
 		float aoQ = a/Q;
 		float d = (4*a2+2*aoQ+1);
-		
+
 		KernelA[0] = -(8*a2-2) / d;
 		KernelA[1] = (4*a2 - 2*aoQ + 1) / d;
-		
+
 		switch(type) {
 		case pass:
 			KernelB[0] = 2*aoQ/d;
@@ -891,7 +1000,7 @@ struct Biquad : public LTITv<3,2>
 			KernelB[1] = 2/d;
 			KernelB[2] = 1/d;
 			break;
-		case high: 
+		case high:
 			KernelB[0] = 4*a2/d;
 			KernelB[1] = -8*a2/d;
 			KernelB[2] = 4*a2/d;
@@ -926,9 +1035,9 @@ struct ThirianT : public LTITv<N+1,N>
 					ak /= ((double)D-(double)(N-k-n));
 				}
 				*/
-				for(int n=0;n<k;n++) 
+				for(int n=0;n<k;n++)
 					ak *= ((double)D-(double)(N-n));
-				for(int i=0;i<k;i++) 
+				for(int i=0;i<k;i++)
 					ak /= ((double)D-(double)(-k+i));
 				this->KernelA[k-1] = (float)ak;
 				this->KernelB[N-k] = (float)ak;
@@ -966,7 +1075,7 @@ struct FilterC1C3 : public LTITv<1,1>
 			return;
 		//if(approximatelyEqual(this->freq,freq) && approximatelyEqual(this->c1,c1) && approximatelyEqual(this->c3,c3))
 			//return;
-			float g = 1.0 - c1/freq; 
+			float g = 1.0 - c1/freq;
 			float b = 4.0*c3+freq;
 			float a1 = (-b+sqrt(b*b-16.0*c3*c3))/(4.0*c3);
 			KernelB = g*(1+a1);
@@ -1028,8 +1137,8 @@ struct FDN_HH_Base{
         for(int i=0;i<size;i++)
             lengths[i] = sc_min(len[i],sizedel);
     }
-    
-    float go(float in) 
+
+    float go(float in)
     {
         float i[size];
         float sumo = 0;
@@ -1039,8 +1148,8 @@ struct FDN_HH_Base{
         sumo -= in;
         for(int j=0;j<size;j++)
             i[j] = o[o_perm[j]] - sumo;
-        
-        float out = 0.0;  
+
+        float out = 0.0;
         for(int j=0;j<size;j++) {
             delay[j].push(i[j]);
             o[j] = decay[j].filter(delay[j].delay(lengths[j]));
@@ -1049,7 +1158,7 @@ struct FDN_HH_Base{
         out *= fac;
         return mix*out + (1.0-mix)*in;
     }
-    void go(float *in,float *outA, int N) 
+    void go(float *in,float *outA, int N)
     {
         float i[size];
         for(int k=0; k<N; k++){
@@ -1060,8 +1169,8 @@ struct FDN_HH_Base{
             sumo -= in[k];
             for(int j=0;j<size;j++)
                 i[j] = o[o_perm[j]] - sumo;
-            
-            float out = 0.0;  
+
+            float out = 0.0;
             for(int j=0;j<size;j++) {
                 delay[j].push(i[j]);
                 o[j] = decay[j].filter(delay[j].delay(lengths[j]));
@@ -1071,7 +1180,7 @@ struct FDN_HH_Base{
             outA[k] = mix*out + (1.0-mix)*in[k];
         }
     }
-    void go_st(float *in,float *outA[2], int N) 
+    void go_st(float *in,float *outA[2], int N)
     {
         float i[size];
         for(int k=0; k<N; k++){
@@ -1082,7 +1191,7 @@ struct FDN_HH_Base{
             sumo -= in[k];
             for(int j=0;j<size;j++)
                 i[j] = o[o_perm[j]] - sumo;
-            
+
             float out[2];out[0]=0;out[1]=0;
             for(int j=0;j<size;j++) {
                 delay[j].push(i[j]);
@@ -1126,7 +1235,7 @@ struct ThirianDispersion{
 			return;
 		}
 
-		if(this->freq==freq && this->B==B) 
+		if(this->freq==freq && this->B==B)
 			return;
 		float D = ValimakiDispersion(B,freq,M);
 		//if(D <=1)
