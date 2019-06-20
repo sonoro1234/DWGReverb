@@ -22,14 +22,20 @@ end
 --c1: inverse of decay time
 --c3: inverse of hight frequency decay time
 --mix
-DWGReverb = MultiOutUGen:new{name="DWGReverb"}
-function DWGReverb.ar(inp,len,c1,c3,mix,coefs,doprime)
-	inp = inp or 0;c1 = c1 or 1;c3 = c3 or 10;len = len or 2000;mix = mix or 1
+DWGReverbC1C3 = MultiOutUGen:new{name="DWGReverbC1C3"}
+function DWGReverbC1C3.ar(inp,len,c1,c3,mix,coefs,perm,doprime)
+	inp = inp or 0;c1 = c1 or 1;c3 = c3 or 1;len = len or 32000;mix = mix or 1
 	coefs = coefs or {1,0.9464,0.87352,0.83,0.8123,0.7398,0.69346,0.6349}
-	doprime = doprime or 0
+	doprime = doprime or 1
+  --perm = perm or {0,1,2,3,4,5,6,7} 
+	perm = perm or {1,2,3,4,5,6,7,0}
+	--perm = perm or {3,4,5,6,7,0,1,2}
+	--perm = perm or {7,0,1,2,3,4,5,6}
 	assert(#coefs==8)
-	return DWGReverb:MultiNew{2,2,inp,len,c1,c3,mix,doprime,unpack(coefs)}
+	assert(#perm==8)
+	return DWGReverbC1C3:MultiNew(concatTables({ 2,2,inp,len,c1,c3,mix,doprime},coefs,perm))
 end
+DWGReverb = DWGReverbC1C3
 
 --The synthdef
 
@@ -44,6 +50,7 @@ SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,
 	local input = Impulse.ar(2)
 	input = HPF.ar(LPF.ar(input,3000),200) *3
 	input = LeakDC.ar(input)
+	--local input =  EnvGen.ar(Env.adsr(), Impulse.ar(3)) * PinkNoise.ar(0.8)*10;
 
 	--for moving source
 	Ps[1] = SinOsc.kr(0.1):range(2,4)
@@ -52,7 +59,7 @@ SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,
 	local bx = LocalBuf(Nbuf)
 	local by = LocalBuf(Nbuf)
 	local bz = LocalBuf(Nbuf)
-	local trig = EarlyRefAtkGen.kr(bw,bx,by,bz,Psmod,Pr,L,HW,-B,N)
+	local trig = EarlyRefAtkGen.kr(bw,bx,by,bz,Ps,Pr,L,HW,-B,N)
 	local sigw = Convolution2L.ar(input,bw,trig,Nbuf)
 	local sigx = Convolution2L.ar(input,bx,trig,Nbuf)
 	local sigy = Convolution2L.ar(input,by,trig,Nbuf)
