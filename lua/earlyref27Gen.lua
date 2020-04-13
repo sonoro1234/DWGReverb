@@ -40,7 +40,7 @@ DWGReverb = DWGReverbC1C3
 --buffer must be power of two for Convolution2
 --choose size according to generated RIR
 Nbuf = 2048*4
-SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,1.2},Pr = Ref{3,3,1.2},B=0.74,HW=0.4,N = 3,revl=0.5,c1=8,c3=10,Hangle=0,bypass=0},function()
+SynthDef("testearly",{out=Master.busin,len=2000,L=Ref{6.2,8,2.7},Ps = Ref{2,3.1,1.2},Pr = Ref{3,3,1.2},B=0.74,HW=0.4,N = 6,revl=0.5,c1=8,c3=10,Hangle=0,bypass=0},function()
 
 	local input = Impulse.ar(2)
 	input = HPF.ar(LPF.ar(input,3000),200) *3
