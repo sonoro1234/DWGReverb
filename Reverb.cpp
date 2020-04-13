@@ -484,7 +484,6 @@ void Kendall::go(float *in,float *outL, float *outR,int num){
 }
 void Kendall::get_args(Unit *unit,bool force){
 	float Pst[3],Prt[3],Lt[3],HWt,Bt,p_t;
-    int Nt;
     Pst[0] = ZIN0(1);
     Pst[1] = ZIN0(2);
     Pst[2] = ZIN0(3);
@@ -515,10 +514,7 @@ void Kendall_next(Kendall *unit,int numsamples){
 }
 /////////////EarlyRef
 const int MaxNits = 6;
-//const int Nits = MaxNits;
-//const int Nrefs = pow((2*Nits + 1),3)*8;
-const int MaxNrefs = pow((2*MaxNits + 1),3);
-//const int Nrefs = MaxNrefs;
+const int MaxNrefs = (2*6 + 1)^3;//2197;//pow((2*MaxNits + 1),3);
 struct EarlyRef:public Unit
 {
 	Unit * unit;
