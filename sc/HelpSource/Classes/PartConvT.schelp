@@ -22,7 +22,7 @@ argument:: fftsize
 spectral convolution partition size (twice partition size). You must ensure that the blocksize divides the partition size and there are at least two blocks per partition (to allow for amortisation).
 
 argument:: irbufnum
-buffer with the inpulse response.
+buffer with the inpulse response. Not changeable after construction. You can change the buffer contents and send trig afterwards.
 
 argument:: trig
 tells plugin that irbufnum contents have been updated
