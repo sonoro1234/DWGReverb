@@ -514,7 +514,7 @@ void Kendall_next(Kendall *unit,int numsamples){
 }
 /////////////EarlyRef
 const int MaxNits = 6;
-const int MaxNrefs = (2*6 + 1)^3;//2197;//pow((2*MaxNits + 1),3);
+const int MaxNrefs = 2197;//(2*6 + 1)^3;//pow((2*MaxNits + 1),3);
 struct EarlyRef:public Unit
 {
 	Unit * unit;
