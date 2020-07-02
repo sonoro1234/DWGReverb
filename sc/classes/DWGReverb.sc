@@ -1,3 +1,27 @@
+EarlyRef : UGen {
+
+    *ar { arg input = 0, source = [0,0,0], receiver = [0,0,0], roomsize = [1,1,1], hw = 0.2, b = 0.97, n = 0, p = 0, allp_lens = [347,113,37], allp_c = 0.7;
+        (source.size == 3).not.if { ^Error("Length of source in EarlyRef must be 3").throw; };
+        (receiver.size == 3).not.if { ^Error("Length of receiver in EarlyRef must be 3").throw; };
+        (roomsize.size == 3).not.if { ^Error("Length of roomsize in EarlyRef must be 3").throw; };
+        (allp_lens.size == 3).not.if { ^Error("Length of allp_lens in EarlyRef must be 3").throw; };
+        ^this.multiNewList(['audio', input] ++ source ++ receiver ++ roomsize ++ [hw, b, n, p] ++ allp_lens ++ [allp_c]);
+    }
+
+    checkInputs {
+        if (inputs.at(0).rate != 'audio', {
+            ^("Input at index 0 must be audio rate");
+        });
+        ^this.checkValidInputs;
+    }
+
+    init { |...theInputs|
+        inputs = theInputs;
+        ^this.initOutputs(2, 'audio')
+    }
+
+}
+
 EarlyRefGen : UGen {
 
     *kr { arg bufL = 0, bufR = 0, source = [0,0,0], receiver = [0,0,0], roomsize = [1,1,1], hw = 0.2, b = 0.97, n = 0, hangle=0 ;

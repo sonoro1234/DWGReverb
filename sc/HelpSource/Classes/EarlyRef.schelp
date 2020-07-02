@@ -1,0 +1,65 @@
+TITLE:: EarlyRef
+summary:: Early reflections convolver
+categories:: UGens>Reverbs
+related:: Classes/DWGReverbC1C3, Classes/EarlyRefGen, Classes/EarlyRefAtkGen
+
+DESCRIPTION::
+
+Convolves input with early reflections in a mono-to-stereo reverb.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: input
+Signal to be convolved.
+
+ARGUMENT:: source
+The x-, y-, and z-coordinates of the source audio in meters.
+
+ARGUMENT:: receiver
+The x-, y-, and z-coordinates of the listener in meters.
+
+ARGUMENT:: roomsize
+The width, height, and length of the room in meters.
+
+ARGUMENT:: hw
+Ear separation in meters.
+
+ARGUMENT:: b
+Reflection coefficient for the room's floor, walls, and ceiling.
+
+ARGUMENT:: n
+Controls the number of mirror images to model. n = 0 generates 27 mirror images, and n = 1 to 5 generates 8*(N*2+1)^3 mirror images.
+
+ARGUMENT:: p
+Low pass filter for reflections. 0 to 1.
+
+ARGUMENT:: allp_lens
+Length of three allpass filters.
+
+ARGUMENT:: allp_c
+Allpass amount. 0 to 1.
+
+EXAMPLES::
+
+code::
+(
+SynthDef(\testearly,{
+    |out = 0, len = 2000, roomsize = #[6.2,8,2.7], source = #[2,3.1,1.2], receiver = #[3,3,1.2], b = 0.74, hw = 0.4, n = 3, revl = 1, c1 = 8, c3 = 10, , p = 0, bypass = 0|
+    var in, early, sig;
+    in = Impulse.ar(2);
+    in = HPF.ar(LPF.ar(in, 3000), 200) * 3;
+    in = LeakDC.ar(in);
+    source[0] = SinOsc.kr(0.1).range(2, 4);
+
+    early = EarlyRef.ar(in, source, receiver, roomsize, hw, b.neg, n, p);
+
+    sig = DWGReverbC1C3.ar(Mix(early) * 0.5, len, c1, c3) * revl + early;
+    sig = Select.ar(bypass, [sig, in]);
+    Out.ar(out, sig);
+}).add;
+)
+
+Synth(\testearly);
+::
