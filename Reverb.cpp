@@ -27,8 +27,8 @@ DWGAllpass::DWGAllpass(Unit *unit){
 
 void DWGAllpass_next(DWGAllpass *unit,int numsamples)
 {
-    float* in = ZIN(0);
-    float* out = ZOUT(0);
+    float* in = IN(0);
+    float* out = OUT(0);
     int M = ZIN0(1);
     float a = sc_clip(ZIN0(2),-1,1);
     unit->allpass.set_coeffs(M,a);
