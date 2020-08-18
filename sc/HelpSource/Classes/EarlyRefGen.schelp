@@ -1,7 +1,7 @@
 TITLE:: EarlyRefGen
 summary:: Early reflections generator
 categories:: UGens>Reverbs
-related:: Classes/DWGReverbC1C3, Classes/EarlyRefAtkGen, Classes/GVerb
+related:: Classes/DWGReverbC1C3, Classes/EarlyRefAtkGen, Classes/EarlyRef
 
 DESCRIPTION::
 

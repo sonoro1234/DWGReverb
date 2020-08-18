@@ -1,4 +1,4 @@
-EarlyRef : UGen {
+EarlyRef : MultiOutUGen {
 
     *ar { arg input = 0, source = [0,0,0], receiver = [0,0,0], roomsize = [1,1,1], hw = 0.2, b = 0.97, n = 0, p = 0, allp_lens = [347,113,37], allp_c = 0.7;
         (source.size == 3).not.if { ^Error("Length of source in EarlyRef must be 3").throw; };

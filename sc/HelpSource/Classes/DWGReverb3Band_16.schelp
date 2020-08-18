@@ -1,7 +1,7 @@
 TITLE:: DWGReverb3Band_16
 summary:: Digital waveguide reverberator
 categories:: UGens>Reverbs
-related:: Classes/DWGReverbC1C3, Classes/DWGReverbC1C3_16, Classes/DWGReverb3Band, Classes/EarlyRefGen, Classes/EarlyRefAtkGen, Classes/GVerb
+related:: Classes/DWGReverbC1C3, Classes/DWGReverbC1C3_16, Classes/DWGReverb3Band, Classes/EarlyRefGen, Classes/EarlyRefAtkGen, Classes/EarlyRef
 
 DESCRIPTION::
 

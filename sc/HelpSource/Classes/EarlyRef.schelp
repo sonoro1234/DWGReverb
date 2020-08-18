@@ -46,7 +46,7 @@ EXAMPLES::
 code::
 (
 SynthDef(\testearly,{
-    |out = 0, len = 2000, roomsize = #[6.2,8,2.7], source = #[2,3.1,1.2], receiver = #[3,3,1.2], b = 0.74, hw = 0.4, n = 3, revl = 1, c1 = 8, c3 = 10, , p = 0, bypass = 0|
+    |out = 0, len = 2000, roomsize = #[6.2,8,2.7], source = #[2,3.1,1.2], receiver = #[3,3,1.2], b = 0.74, hw = 0.4, n = 3, revl = 1, c1 = 8, c3 = 10, p = 0, bypass = 0|
     var in, early, sig;
     in = Impulse.ar(2);
     in = HPF.ar(LPF.ar(in, 3000), 200) * 3;
